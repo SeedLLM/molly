@@ -1,5 +1,5 @@
 import math
-from typing import Optional, Union
+from typing import Optional, Union, Tuple
 from dataclasses import dataclass
 import random
 
@@ -8,7 +8,7 @@ import torch
 import torch.distributed
 from torch.utils.data import DataLoader, IterableDataset
 
-from .dna_dataset import IterableMultimodalDNADataSet
+from .dna_dataset import IterableMultimodalDNADataSet, TransformersCompatibleDNADataset
 from ..utils.tools import print_rank_0
 
 def seed_worker(worker_id):
@@ -39,35 +39,89 @@ class DataCollator():
         self.tokenizer = tokenizer
 
     def __call__(self, examples):
-        input_ids_list, labels_list, cal_metric_pos_list, dna_ids_lists, dna_start_pos_lists = [], [], [], [], []
-        attention_masks_list = []
-        for instance in examples:
-            input_ids = torch.LongTensor(instance["input_ids"]) if isinstance(instance["input_ids"], list) else instance["input_ids"]
-            labels = torch.LongTensor(instance["labels"]) if isinstance(instance["labels"], list) else instance["labels"]
-            attention_masks = torch.LongTensor(instance["attention_masks"]) if isinstance(instance["labels"], list) else instance["labels"]
-            cal_metric_pos = instance.get("cal_metric_pos", None)
-            dna_ids_list = instance.get("dna_ids_list", None)
-            dna_start_pos_list = instance.get("dna_start_pos_list", None)
+        if not examples:
+            return {}
 
-            input_ids_list.append(input_ids) 
-            labels_list.append(labels)
-            attention_masks_list.append(attention_masks)
-            cal_metric_pos_list.append(cal_metric_pos)
-            dna_ids_lists.append(dna_ids_list)
-            dna_start_pos_lists.append(dna_start_pos_list)
+        # Initialize lists for batch
+        batch = {
+            "input_ids": [],
+            "labels": [],
+            "attention_mask": [],
+            "dna_ids_lists": [],
+            "dna_start_pos_lists": [],
+            "cal_metric_pos": []
+        }
 
-        if None in cal_metric_pos_list:
-            cal_metric_pos_list = None
-        if None in dna_ids_lists or None in dna_start_pos_lists:
-            dna_ids_lists = None
-            dna_start_pos_lists = None
+        # Process each example
+        for example in examples:
+            # Handle required fields
+            for key in ["input_ids", "labels", "attention_mask"]:
+                value = example[key]
+                if isinstance(value, list):
+                    value = torch.LongTensor(value)
+                batch[key].append(value)
 
-        return {"input_ids": torch.stack(input_ids_list),
-                "dna_ids_lists": dna_ids_lists,
-                "labels": torch.stack(labels_list),
-                "attention_mask": torch.stack(attention_masks_list),
-                "cal_metric_pos_tensor": torch.tensor(cal_metric_pos_list) if cal_metric_pos_list is not None else None,
-                "dna_start_pos_lists": dna_start_pos_lists}
+            # Handle optional DNA-related fields
+            if example.get("dna_ids_list") is not None and example.get("dna_start_pos_list") is not None:
+                batch["dna_ids_lists"].append(example["dna_ids_list"])
+                batch["dna_start_pos_lists"].append(example["dna_start_pos_list"])
+            
+            # Handle metric position
+            if example.get("cal_metric_pos") is not None:
+                batch["cal_metric_pos"].append(example["cal_metric_pos"])
+
+        # Stack tensors
+        batch["input_ids"] = torch.stack(batch["input_ids"])
+        batch["labels"] = torch.stack(batch["labels"])
+        batch["attention_mask"] = torch.stack(batch["attention_mask"])
+
+        # Handle DNA sequences if present
+        if batch["dna_ids_lists"] and batch["dna_start_pos_lists"]:
+            # Pad DNA sequences to max length in batch
+            max_dna_sequences = max(len(dna_list) for dna_list in batch["dna_ids_lists"])
+            padded_dna_ids_lists = []
+            padded_dna_start_pos_lists = []
+            
+            for dna_list, pos_list in zip(batch["dna_ids_lists"], batch["dna_start_pos_lists"]):
+                if len(dna_list) < max_dna_sequences:
+                    # Pad with empty DNA sequences
+                    dna_list.extend([torch.zeros_like(dna_list[0])] * (max_dna_sequences - len(dna_list)))
+                    # Make sure pos_list is a tensor and has the correct size
+                    if isinstance(pos_list, list):
+                        pos_list = torch.tensor(pos_list, dtype=torch.long)
+                    # Pad positions with zeros
+                    current_size = pos_list.size(0)
+                    if current_size < max_dna_sequences:
+                        padding = torch.zeros(max_dna_sequences - current_size, dtype=torch.long)
+                        pos_list = torch.cat([pos_list, padding])
+                
+                padded_dna_ids_lists.append(torch.stack(dna_list))
+                padded_dna_start_pos_lists.append(pos_list)
+            
+            # Ensure all tensors in padded_dna_start_pos_lists have the same size
+            for i, pos_list in enumerate(padded_dna_start_pos_lists):
+                if pos_list.size(0) != max_dna_sequences:
+                    # Resize tensor to match max_dna_sequences
+                    if pos_list.size(0) > max_dna_sequences:
+                        padded_dna_start_pos_lists[i] = pos_list[:max_dna_sequences]
+                    else:
+                        padding = torch.zeros(max_dna_sequences - pos_list.size(0), dtype=torch.long)
+                        padded_dna_start_pos_lists[i] = torch.cat([pos_list, padding])
+            
+            batch["dna_ids_lists"] = torch.stack(padded_dna_ids_lists)
+            batch["dna_start_pos_lists"] = torch.stack(padded_dna_start_pos_lists)
+        else:
+            # Remove DNA fields if no DNA sequences present
+            del batch["dna_ids_lists"]
+            del batch["dna_start_pos_lists"]
+
+        # Convert metric positions to tensor if present
+        if batch["cal_metric_pos"]:
+            batch["cal_metric_pos"] = torch.tensor(batch["cal_metric_pos"], dtype=torch.long)
+        else:
+            del batch["cal_metric_pos"]
+
+        return batch
 
 
 def get_train_eval_args(args, is_train):
@@ -79,7 +133,7 @@ def get_train_eval_args(args, is_train):
             args.batch_size_per_gpu if is_train else args.eval_batch_size_per_gpu)
 
 
-def load_dataloder(args, tokenizer, dp_rank, num_dp_ranks, dataset_kwargs, is_train):
+def load_dataloder(args, tokenizer, dp_rank, num_dp_ranks, dataset_kwargs, is_train, return_transformers_dataset=True):
     flag, dataset_path, max_len, max_src_len, read_nums, batch_size_per_gpu = get_train_eval_args(args, is_train)
     if dataset_path is None:
         print_rank_0("The data set path is None!")
@@ -103,54 +157,25 @@ def load_dataloder(args, tokenizer, dp_rank, num_dp_ranks, dataset_kwargs, is_tr
                           shuffle=True,
                           **dataset_kwargs)
 
-    dataset = IterableMultimodalDNADataSet(data_path=dataset_path, read_nums=read_nums, **dataset_kwargs)
+    # Create the iterable dataset
+    iterable_dataset = IterableMultimodalDNADataSet(data_path=dataset_path, read_nums=read_nums, **dataset_kwargs)
     
-    is_iterable_dataset = isinstance(dataset, IterableDataset)
-    dataset_sampler = None
-    dataloader = DataLoader(dataset,
-                            collate_fn=data_collator,
-                            shuffle=False,
-                            drop_last=True,
-                            sampler=dataset_sampler,
-                            batch_size=batch_size_per_gpu,
-                            generator=torch.Generator(),
-                            worker_init_fn=seed_worker,)
+    # Ensure iterable_dataset has an estimated_len attribute for progress tracking
+    if not hasattr(iterable_dataset, 'estimated_len') or iterable_dataset.estimated_len is None:
+        if read_nums is not None:
+            # If read_nums is provided, use it divided by world_size
+            world_size = num_dp_ranks if num_dp_ranks > 0 else 1
+            iterable_dataset.estimated_len = read_nums // world_size
+            print_rank_0(f"Setting estimated dataset length to {iterable_dataset.estimated_len} for {flag}")
     
-    msgs = []
-    if not isinstance(dataset, IterableDataset):
-        msgs.extend([
-            f"{flag} DATALOADER LENGTH: {len(dataloader)}",
-            f"{flag} DATASET LENGTH: {len(dataset)}",
-        ])
-    else:
-        msgs.extend([
-            f"{flag} IterableDataset does not support __len__, skipping length print",
-        ])
-
-    if is_train:
-        assert args.epochs is not None or args.train_iters is not None, 'Must provide epochs or train_iters'
-        
-        if args.epochs is not None:
-            dataset_len = getattr(dataset, 'estimated_len', None)
-            assert dataset_len is not None and dataset_len > 0, \
-                "IterableDataset must define `estimated_len` or set `read_nums`"
-
-            micro_update_steps_one_epoch = math.ceil(dataset_len / batch_size_per_gpu)
-            args.num_micro_update_steps = args.epochs * micro_update_steps_one_epoch
-        else:
-            args.num_micro_update_steps = args.train_iters
-
-        args.num_global_update_steps = math.ceil(args.num_micro_update_steps / args.gradient_accumulation_steps)
-        args.num_warmup_steps = int(args.num_global_update_steps * args.warmup) + 1
-
-        msgs.extend([
-            f"NUMBER OF MICRO UPDATE STEPS: {args.num_micro_update_steps}",
-            f"NUMBER OF GLOBAL UPDATE STEPS: {args.num_global_update_steps}",
-            f"NUMBER OF WARMUP STEPS: {args.num_warmup_steps}",
-            f"Base learning rate is {args.lr}"
-        ])
-
-    for msg in msgs:
-        print_rank_0(f"--->{msg}")
-
-    return dataloader
+    # If we need a Transformers-compatible dataset, convert it
+    if return_transformers_dataset:
+        # For transformers trainer, we need to return a map-style dataset
+        transformers_dataset = TransformersCompatibleDNADataset(
+            iterable_dataset, 
+            max_size=read_nums
+        )
+        return transformers_dataset
+    
+    # 如果直接使用IterableDataset，直接返回iterable_dataset
+    return iterable_dataset
