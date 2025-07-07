@@ -73,7 +73,7 @@ class QwenWithNt(nn.Module):
         **generate_kwargs                           # e.g. max_length=..., num_beams=..., do_sample=...
     ) -> torch.LongTensor:
         """
-        融合 DNA-BERT 提取的多模态 embedding，使用 Qwen3 的 generate 接口生成序列。
+        融合 NT 提取的多模态 embedding，使用 Qwen3 的 generate 接口生成序列。
 
         返回：
             output_ids: [B, T_gen] 生成的 token id 序列
