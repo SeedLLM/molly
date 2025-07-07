@@ -5,8 +5,88 @@ import deepspeed.ops as ds_optim
 import deepspeed
 
 def print_rank_0(*args, **kwargs):
-    if deepspeed.comm.get_rank() == 0:
+    """
+    仅在rank为0的进程上打印消息
+    无需传入global_rank参数，自动使用deepspeed.comm.get_rank()获取当前进程排名
+    如果deepspeed未初始化，则直接打印
+    """
+    try:
+        if not deepspeed.comm.is_initialized():
+            # 如果deepspeed未初始化，直接打印
+            print(*args, **kwargs)
+        elif deepspeed.comm.get_rank() == 0:
+            # 如果是rank 0进程，打印
+            print(*args, **kwargs)
+    except (ImportError, AttributeError, RuntimeError):
+        # 如果deepspeed未安装或者发生其他错误，直接打印
         print(*args, **kwargs)
+
+def swanlab_log_rank_0(metrics, step, args=None):
+    """
+    只在rank 0进程执行SwanLab日志记录
+    
+    Args:
+        metrics: 要记录的指标字典
+        step: 当前步骤
+        args: 参数对象，用于检查swanlab是否启用
+    """
+    if args is None or not args.swanlab:
+        return
+        
+    try:
+        # 检查是否是rank 0进程
+        is_rank_0 = True
+        if deepspeed.comm.is_initialized():
+            is_rank_0 = deepspeed.comm.get_rank() == 0
+            
+        if is_rank_0:
+            import swanlab
+            swanlab.log(metrics, step)
+            print_rank_0(f"SwanLab logged metrics at step {step}")
+    except Exception as e:
+        print_rank_0(f"Error logging to SwanLab: {str(e)}")
+
+def init_swanlab_rank_0(args, experiment_suffix=""):
+    """
+    只在rank 0进程初始化SwanLab
+    
+    Args:
+        args: 参数对象，包含swanlab相关设置
+        experiment_suffix: 实验名称后缀
+        
+    Returns:
+        bool: 是否成功初始化
+    """
+    if not args.swanlab:
+        return False
+        
+    try:
+        # 检查是否是rank 0进程
+        is_rank_0 = True
+        if deepspeed.comm.is_initialized():
+            is_rank_0 = deepspeed.comm.get_rank() == 0
+            
+        if is_rank_0:
+            import swanlab
+            print_rank_0("Setting up SwanLab logging...")
+            print_rank_0(f"SwanLab project: {args.swanlab_project}, team: {args.swanlab_team}")
+            
+            # 登录
+            swanlab.login(api_key='7BZRyWx1ftGxsthmlgZ1Q', save=True)
+            print_rank_0("SwanLab login successful")
+            
+            # 初始化
+            swanlab.init(
+                project=args.swanlab_project,
+                experiment_name=args.experiment_name + experiment_suffix,
+                config=vars(args)
+            )
+            print_rank_0("SwanLab initialized successfully")
+            return True
+    except Exception as e:
+        print_rank_0(f"Error initializing SwanLab: {str(e)}")
+        return False
+    return False
 
 def refresh_config(ds_config, args):
     """
@@ -15,14 +95,40 @@ def refresh_config(ds_config, args):
     """
     ds_config['gradient_accumulation_steps'] = args.gradient_accumulation_steps
     ds_config['train_micro_batch_size_per_gpu'] = args.batch_size_per_gpu
-    ds_config['optimizer']['params']['lr'] = args.lr
-    ds_config["optimizer"]["scheduler"]["params"]["warmup_num_steps"] = args.num_warmup_steps
-    ds_config["gradient_clipping"] = args.clip_grad_max_norm
-    if 'train_batch_size' in ds_config:
+    
+    # Update optimizer parameters
+    if 'optimizer' in ds_config:
+        ds_config['optimizer']['params']['lr'] = args.lr
+        if 'betas' in args:
+            ds_config['optimizer']['params']['betas'] = args.betas
+        if 'eps' in args:
+            ds_config['optimizer']['params']['eps'] = args.eps
+        if 'weight_decay' in args:
+            ds_config['optimizer']['params']['weight_decay'] = args.weight_decay
+    
+    # Update scheduler parameters (now at top level)
+    if 'scheduler' in ds_config:
+        if hasattr(args, 'num_warmup_steps'):
+            ds_config["scheduler"]["params"]["warmup_num_steps"] = args.num_warmup_steps
+        if hasattr(args, 'warmup_min_lr'):
+            ds_config["scheduler"]["params"]["warmup_min_lr"] = args.warmup_min_lr
+        if hasattr(args, 'warmup_max_lr'):
+            ds_config["scheduler"]["params"]["warmup_max_lr"] = args.lr
+    
+    # Set gradient clipping if available
+    if hasattr(args, 'clip_grad_max_norm'):
+        ds_config["gradient_clipping"] = args.clip_grad_max_norm
+    
+    # Update batch size if needed
+    if 'train_batch_size' in ds_config and hasattr(args, 'gpu_count'):
         ds_config['train_batch_size'] = args.batch_size_per_gpu * args.gpu_count
     
-    ds_config["fp16"]["enabled"] = False
-    ds_config["bf16"]["enabled"] = True
+    # Ensure using bfloat16 precision
+    if 'fp16' in ds_config:
+        ds_config["fp16"]["enabled"] = False
+    if 'bf16' in ds_config:
+        ds_config["bf16"]["enabled"] = True
+    
     return ds_config
 
 def get_optimizer_type(args, ds_config):
@@ -52,9 +158,9 @@ def get_optimizer(ds_config, args, model, optimizer_sd = None, lr_scheduler_sd =
     if isSuccess:
         if 'optimizer' in ds_config:
             del ds_config['optimizer']
-        print_rank_0(f'--->Deepspeed optimizer setting has been overwritten', args.global_rank)
+        print_rank_0(f'--->Deepspeed optimizer setting has been overwritten')
     else:
-        print_rank_0(f'--->Try to use diy optimizer failed, use the ds setting', args.global_rank)
+        print_rank_0(f'--->Try to use diy optimizer failed, use the ds setting')
         return None, None
 
     lr_scheduler = get_learning_rate_scheduler(optimizer, 0, args)
@@ -63,7 +169,7 @@ def get_optimizer(ds_config, args, model, optimizer_sd = None, lr_scheduler_sd =
         optimizer.load_state_dict(optimizer_sd)
         lr_scheduler.load_state_dict(lr_scheduler_sd)
     elif any([optimizer_sd, lr_scheduler_sd]):
-        print_rank_0(f'--->Optimizer state dict and lr scheduler state dict have not been loaded as optimizer or lr scheduler is None', args.global_rank)
+        print_rank_0(f'--->Optimizer state dict and lr scheduler state dict have not been loaded as optimizer or lr scheduler is None')
 
     return optimizer, lr_scheduler
 
@@ -92,7 +198,7 @@ def get_regular_optimizer(optim_type, args, model):
                                     betas=tuple(args.betas))
         isSuccess = True
     except Exception as e:
-        print_rank_0(f'--->Load local optimizer error as e: {e}', args.global_rank)
+        print_rank_0(f'--->Load local optimizer error as e: {e}')
         isSuccess = False
         optimizer = None
     return isSuccess, optimizer
@@ -149,6 +255,5 @@ def set_up_trainable_param(model, args):
     if args.enable_list is not None:
         enable_trainable_params(model, args.enable_list)
     else:
-        print_rank_0('--->All parameters will be set to trainable as both `args.enable_list` and `args.diable_list` are None',
-                     args.global_rank)
+        print_rank_0('--->All parameters will be set to trainable as both `args.enable_list` and `args.diable_list` are None')
         disable_untrainable_params(model, [])
