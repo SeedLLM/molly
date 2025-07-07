@@ -201,7 +201,16 @@ class Trainer:
             profiler (Callable, optional): Profiler function. Defaults to None.
             log_loss (bool, optional): Flag to log loss values. Defaults to False.
         """
-        print_rank_0('--->loaded the model, start training', self.args.global_rank)
+        # Start Training
+        start_step = 0
+        micro_step = start_step
+        global_step = start_step // self.args.gradient_accumulation_steps
+
+        print_rank_0('--->loaded the model, start training')
+
+        # Check if save_interval is specified
+        if self.args.save_interval is None:
+            print_rank_0(f'--->Checkpoint will only be saved on the last step of training as `args.save_interval` is None')
 
         total_print_steps = self.args.num_global_update_steps // self.args.show_avg_loss_step
 
@@ -212,7 +221,7 @@ class Trainer:
 
         if self.args.save_interval is None:
             self.args.save_interval = int(1e30)
-            print_rank_0(f'--->Checkpoint will only be saved on the last step of training as `args.save_interval` is None', self.args.global_rank)
+            print_rank_0(f'--->Checkpoint will only be saved on the last step of training as `args.save_interval` is None')
 
         with Timer(iterations=total_print_steps) as timer:
             model.train()
@@ -260,7 +269,7 @@ class Trainer:
                 self.save_model(model, optimizer, lr_scheduler, train_data_loader, step)
 
                 if self.end:
-                    print_rank_0("Early stopping triggered.", self.args.global_rank)
+                    print_rank_0("Early stopping triggered.")
                     break
 
         # Final save
@@ -372,7 +381,7 @@ class Trainer:
         # Save the training configuration if required
         if self.save_config and isinstance(self.args, Namespace) and self.args.global_rank == 0:
             with open(config_path, 'w', encoding='utf-8') as f:
-                print_rank_0(f'--->Saving training config at step {step+1} in {config_path}.', self.args.global_rank)
+                print_rank_0(f'--->Saving training config at step {step+1} in {config_path}.')
                 save_dict = {k: v for k, v in self.args.__dict__.items() if k != 'device'}
                 json.dump(save_dict, f)
                 self.save_config = False
@@ -383,21 +392,21 @@ class Trainer:
             should_save = (not self.end and (step + 1) % self.args.save_interval == 0) or (self.end and (step + 1) % self.args.save_interval != 0)
             if should_save:
                 tag = f'step_{step+1}' if not self.end else 'final'
-                print_rank_0(f'--->Start saving model at {step+1}th step in {self.save_folder}.', self.args.global_rank)
+                print_rank_0(f'--->Start saving model at {step+1}th step in {self.save_folder}.')
                 model.save_checkpoint(self.save_folder, tag=tag)
-                print_rank_0('--->Saved the model.', self.args.global_rank)
+                print_rank_0('--->Saved the model.')
         else:
             # Handle saving for other cases
             if not self.end and (step + 1) % self.args.save_interval == 0:
                 save_path = os.path.join(self.save_folder, f'step_{step+1}.ckpt')
-                print_rank_0(f'--->Start saving model at step {step+1} in {save_path}.', self.args.global_rank)
+                print_rank_0(f'--->Start saving model at step {step+1} in {save_path}.')
                 self.torch_save(model, optimizer, lr_scheduler, dataloader, save_path)
-                print_rank_0('--->Saved the model.', self.args.global_rank)
+                print_rank_0('--->Saved the model.')
             elif self.end:
                 save_path = os.path.join(self.save_folder, 'final.ckpt')
-                print_rank_0(f'--->Start saving model at final step in {save_path}.', self.args.global_rank)
+                print_rank_0(f'--->Start saving model at final step in {save_path}.')
                 self.torch_save(model, optimizer, lr_scheduler, dataloader, save_path)
-                print_rank_0('--->Saved the model.', self.args.global_rank)
+                print_rank_0('--->Saved the model.')
 
     def torch_save(self, 
                 model:torch.nn.Module, 
@@ -409,7 +418,7 @@ class Trainer:
         model_state_dict = {}
 
         if is_zero3:
-            print_rank_0('--->Gathering full model weights from all GPUs for ZeRO-3...', self.args.global_rank)
+            print_rank_0('--->Gathering full model weights from all GPUs for ZeRO-3...')
             for name, param in model.module.named_parameters():         
                 with deepspeed.zero.GatheredParameters(param):
                     if self.requires_save(name, param):

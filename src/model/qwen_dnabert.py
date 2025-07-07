@@ -1,9 +1,11 @@
 import time
-from typing import Optional, List
+from typing import Optional, List, Dict, Union, Tuple
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from transformers import AutoTokenizer, AutoModelForCausalLM, AutoModel, Qwen3ForCausalLM, AutoConfig
+from transformers.modeling_outputs import CausalLMOutputWithPast
 
 
 class QwenWithBert(nn.Module):
@@ -18,103 +20,201 @@ class QwenWithBert(nn.Module):
         # init.normal_ = lambda *args, **kwargs: None
 
         self.text_config = config.text_config
-        self.bio_config = config.multimodal_model_config
+        self.bio_config = config.bio_config
         # self.model = Qwen3ForCausalLM(self.text_config)
         self.model = AutoModelForCausalLM.from_config(self.text_config)
         # self.bio_model = BertModel(self.bio_config)
         self.bio_model = AutoModel.from_config(self.bio_config)
-        self.multimodal_projector = nn.Linear(self.bio_config.hidden_size, self.text_config.hidden_size)
+        self.multimodal_projector = nn.Sequential(
+            nn.Linear(self.bio_config.hidden_size, self.text_config.hidden_size * 2),
+            nn.GELU(),
+            nn.Linear(self.text_config.hidden_size * 2, self.text_config.hidden_size),
+            nn.LayerNorm(self.text_config.hidden_size)
+        )
         self.project_token_num = config.project_token_num
-    
-    def forward(self, **kwargs):
-        input_ids = kwargs["input_ids"]                      # [B, L]
-        dna_ids_list = kwargs["dna_ids_lists"]                # List[Tensor], 每个样本内多个 DNA 片段
-        dna_start_pos_list = kwargs["dna_start_pos_lists"]    # List[List[int]], 每个样本内每段 DNA 的插入位置
-        labels = kwargs["labels"]                            # [B, L]
+        
+        # Special token IDs
+        self.dna_start_token_id = None  # Will be set during initialization
+        self.dna_end_token_id = None    # Will be set during initialization
+        self.dna_pad_token_id = None    # Will be set during initialization
 
-        batch_size, seq_len = input_ids.shape
-        hidden_states = self.model.get_input_embeddings()(input_ids)  # [B, L, D]
-        hidden_dim = hidden_states.shape[-1]
+    def set_special_tokens(self, tokenizer):
+        """Set special token IDs from tokenizer"""
+        self.dna_start_token_id = tokenizer.convert_tokens_to_ids("<|dna_start|>")
+        self.dna_end_token_id = tokenizer.convert_tokens_to_ids("<|dna_end|>")
+        self.dna_pad_token_id = tokenizer.convert_tokens_to_ids("<|dna_pad|>")
 
-        # 将 dna_ids_list[b][i] 全部打平
-        flat_dna_ids = []
-        mapping = []  # (batch_idx, start_pos, length)
+    def process_dna_sequences(
+        self,
+        hidden_states: torch.Tensor,
+        dna_ids_list: List[List[torch.LongTensor]],
+        dna_start_pos_list: List[List[int]],
+        device: torch.device
+    ) -> torch.Tensor:
+        """
+        将 DNA 序列嵌入注入到 hidden_states 中对应的 <|dna_start|> 位置之后。
+
+        参数：
+            hidden_states: 原始 token embedding，形状 [B, L, D]
+            dna_ids_list: 每个样本包含若干个 DNA 序列的 token ids，List[List[Tensor]]
+            dna_start_pos_list: 每个样本中每个 DNA 插入位置（即 <|dna_start|> 的位置）
+            device: 目标设备
+
+        返回：
+            注入 DNA 表征后的 hidden_states，形状 [B, L, D]
+        """
+        batch_size = hidden_states.shape[0]
+
+        flat_dna_ids = []  # 展平成一批 DNA 序列，便于统一送入 BERT
+        mapping = []       # 记录每条 DNA 的注入目标：(batch_idx, start_pos, length)
+
+        # 遍历每个样本
         for b in range(batch_size):
             for i, start_pos in enumerate(dna_start_pos_list[b]):
-                dna = dna_ids_list[b][i]
-                flat_dna_ids.append(dna)
-                mapping.append((b, start_pos, len(dna)))
+                dna = dna_ids_list[b][i]            # Tensor: [L_dna]
+                flat_dna_ids.append(dna.to(device)) # 添加到 flat list 中
+                mapping.append((b, start_pos, len(dna)))  # 记录注入位置信息
 
-        # 直接堆叠成 tensor，因为所有 dna 序列长度一致
-        padded_dna = torch.stack(flat_dna_ids, dim=0).to(hidden_states.device)  # [N, fixed_len]
-        dna_embeddings = self.bio_model(padded_dna)[0]  # 直接返回 [N, L_dna, hidden_size]
-        proj_out = self.multimodal_projector(dna_embeddings)
-        # scatter 回去
-        pad_length = self.project_token_num
+        if not flat_dna_ids:
+            # 如果当前 batch 没有任何 DNA 序列，直接返回原始 embedding
+            return hidden_states
+
+        # 将所有 DNA 序列堆叠成一个张量：[N_dna, L_dna]
+        padded_dna = torch.stack(flat_dna_ids, dim=0)
+
+        # 使用 BERT/BioBERT 获取 DNA 表征
+        dna_outputs = self.bio_model(
+            padded_dna,
+            output_hidden_states=True,
+            return_dict=True
+        )
+        dna_embeddings = dna_outputs.last_hidden_state  # 形状：[N_dna, L_dna, H_bio]
+
+        # 映射到主模型的 embedding 空间：[N_dna, L_dna, H_text]
+        proj_embeddings = self.multimodal_projector(dna_embeddings)
+
+        # 注入到 hidden_states 中对应位置
         for i, (b, start_pos, length) in enumerate(mapping):
-            hidden_states[b, start_pos + 1: start_pos + 1 + pad_length, :] = proj_out[i, :pad_length, :]
+            # 将投影后的 DNA 表征插入到 hidden_states 中 <|dna_start|> 后的位置
+            # 注意：最多注入 self.project_token_num 个 token
+            hidden_states[b, start_pos + 1: start_pos + 1 + self.project_token_num, :] = \
+                proj_embeddings[i, :self.project_token_num, :]
 
-        # 进入 Qwen
+        return hidden_states
+
+
+    def forward(
+        self,
+        input_ids: Optional[torch.LongTensor] = None,
+        attention_mask: Optional[torch.LongTensor] = None,
+        dna_ids_lists: Optional[List[List[torch.LongTensor]]] = None,
+        dna_start_pos_lists: Optional[List[List[int]]] = None,
+        labels: Optional[torch.LongTensor] = None,
+        past_key_values: Optional[List[torch.FloatTensor]] = None,
+        use_cache: Optional[bool] = None,
+        output_attentions: Optional[bool] = None,
+        output_hidden_states: Optional[bool] = None,
+        return_dict: Optional[bool] = None,
+        **kwargs
+    ) -> Union[Tuple[torch.Tensor, ...], CausalLMOutputWithPast]:
+        return_dict = return_dict if return_dict is not None else self.text_config.use_return_dict
+
+        # Always disable cache during distributed training/evaluation to avoid DynamicCache errors
+        if torch.distributed.is_initialized() and torch.distributed.get_world_size() > 1:
+            use_cache = False
+
+        # Get token embeddings
+        hidden_states = self.model.get_input_embeddings()(input_ids)
+
+        # Auto infer start positions if not provided
+        if dna_ids_lists is not None:
+            if dna_start_pos_lists is None:
+                dna_start_pos_lists = []
+                for ids in input_ids:
+                    positions = (ids == self.dna_start_token_id).nonzero(as_tuple=True)[0].tolist()
+                    dna_start_pos_lists.append(positions)
+
+            # Sanity check
+            for i in range(len(dna_ids_lists)):
+                assert len(dna_ids_lists[i]) == len(dna_start_pos_lists[i]), \
+                    f"Mismatch in DNA count vs start_pos count at index {i}"
+
+            hidden_states = self.process_dna_sequences(
+                hidden_states,
+                dna_ids_lists,
+                dna_start_pos_lists,
+                input_ids.device
+            )
+
         outputs = self.model(
             inputs_embeds=hidden_states,
-            labels=labels
+            attention_mask=attention_mask,
+            labels=labels,
+            past_key_values=past_key_values,
+            use_cache=use_cache,
+            output_attentions=output_attentions,
+            output_hidden_states=output_hidden_states,
+            return_dict=return_dict,
         )
-        # outputs.logits
-        return outputs.loss, None
+        return outputs
 
-    
+
     @torch.no_grad()
     def generate(
         self,
-        input_ids: torch.LongTensor,               # [B, L]
-        dna_ids_lists: List[List[torch.LongTensor]],   # List (batch) of List (segments) of [seg_len]
-        dna_start_pos_lists: List[List[int]],         # List (batch) of start positions
-        attention_mask: Optional[torch.LongTensor] = None,  # [B, L], 若有
-        **generate_kwargs                           # e.g. max_length=..., num_beams=..., do_sample=...
+        input_ids: torch.LongTensor,
+        dna_ids_lists: List[List[torch.LongTensor]],
+        dna_start_pos_lists: Optional[List[List[int]]] = None,
+        attention_mask: Optional[torch.LongTensor] = None,
+        max_length: Optional[int] = None,
+        min_length: Optional[int] = None,
+        do_sample: bool = True,
+        temperature: float = 0.8,
+        top_p: float = 0.95,
+        top_k: Optional[int] = None,
+        num_beams: Optional[int] = None,
+        no_repeat_ngram_size: Optional[int] = None,
+        **generate_kwargs
     ) -> torch.LongTensor:
-        """
-        融合 DNA-BERT 提取的多模态 embedding，使用 Qwen3 的 generate 接口生成序列。
-
-        返回：
-            output_ids: [B, T_gen] 生成的 token id 序列
-        """
         device = input_ids.device
 
-        # 1. 计算初始 token embedding
-        hidden_states = self.model.get_input_embeddings()(input_ids)  # [B, L, D]
+        # Get embeddings
+        hidden_states = self.model.get_input_embeddings()(input_ids)
 
-        # 2. 将所有 DNA 片段打平并到同设备
-        flat_dna = []
-        mapping = []  # (batch_idx, start_pos, length)
-        for b, (dna_list, pos_list) in enumerate(zip(dna_ids_lists, dna_start_pos_lists)):
-            for dna_ids, start in zip(dna_list, pos_list):
-                flat_dna.append(dna_ids.to(device))
-                mapping.append((b, start, dna_ids.size(0)))
+        # Auto-infer DNA start positions if not provided
+        if dna_ids_lists is not None:
+            if dna_start_pos_lists is None:
+                dna_start_pos_lists = []
+                for ids in input_ids:
+                    positions = (ids == self.dna_start_token_id).nonzero(as_tuple=True)[0].tolist()
+                    dna_start_pos_lists.append(positions)
 
-        padded_dna = torch.stack(flat_dna, dim=0)  # [N, seg_len]
+            for i in range(len(dna_ids_lists)):
+                assert len(dna_ids_lists[i]) == len(dna_start_pos_lists[i]), \
+                    f"Mismatch in DNA count vs start_pos count at index {i}"
 
-        # 3. 用 DNA-BERT 提取 embedding 并投射
-        dna_emb = self.bio_model(padded_dna)[0]                     # [N, seg_len, H_bio]
-        proj_emb = self.multimodal_projector(dna_emb)               # [N, seg_len, H_text]
+            hidden_states = self.process_dna_sequences(
+                hidden_states,
+                dna_ids_lists,
+                dna_start_pos_lists,
+                device
+            )
 
-        # 4. 把投射后的 embedding 插回到 hidden_states
-        for i, (b, start, length) in enumerate(mapping):
-            hidden_states[b, start + 1 : start + 1 + self.project_token_num, :] = proj_emb[i, :self.project_token_num, :]
-
-        # 5. 准备 attention_mask（如未传则全1）
         if attention_mask is None:
             attention_mask = torch.ones_like(input_ids, device=device)
 
-        # 6. 调用底层 generate（传入 inputs_embeds 而非 input_ids）
-        ml = 2048
-        temperature = 0.8
-        top_p=0.95
         output_ids = self.model.generate(
             inputs_embeds=hidden_states,
             attention_mask=attention_mask,
-            max_length=ml,
-            do_sample=True,
+            max_length=max_length or 2048,
+            min_length=min_length or 0,
+            do_sample=do_sample,
             temperature=temperature,
-            top_p=top_p
+            top_p=top_p,
+            top_k=top_k,
+            no_repeat_ngram_size=no_repeat_ngram_size,
+            pad_token_id=self.model.config.pad_token_id,
+            eos_token_id=self.model.config.eos_token_id,
+            **generate_kwargs
         )
         return output_ids
