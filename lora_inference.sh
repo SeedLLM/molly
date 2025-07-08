@@ -1,12 +1,12 @@
 #! /bin/bash
 
 # 设置变量，方便切换模型
-MODEL_DIR="/fs-computility/ai4agr/lijinzhe/res_data_model/biomllm_res/0707_qwen3_4b_1k"
-CHECKPOINT="checkpoint-50"
+MODEL_DIR="/fs-computility/ai4agr/lijinzhe/res_data_model/biomllm_res/0708_exp2_qwen3_1.7b_5k"
+CHECKPOINT="checkpoint-400"
 
 options="--batch_size 8 \
     --dataset_path /tos-bjml-ai4agr/lijinzhe/dataset/BioMLLM/dev_only_dna.jsonl \
-    --text_model_path /tos-bjml-ai4agr/lijinzhe/BioMLLM/Qwen3-4B \
+    --text_model_path /tos-bjml-ai4agr/lijinzhe/BioMLLM/Qwen3-1.7B \
     --bio_model_path /tos-bjml-ai4agr/lijinzhe/BioMLLM/DNABERT-2-117M \
     --trained_model_path ${MODEL_DIR}/${CHECKPOINT} \
     --use_lora \

@@ -247,8 +247,7 @@ class MultiModalInfer:
         # 2) Construct input_ids
         input_ids: List[int] = []
 
-        if self.text_tokenizer.bos_token_id is not None:
-            input_ids.append(self.text_tokenizer.bos_token_id)
+        input_ids.extend(self.text_tokenizer.encode("<|im_start|>system\nYou are a helpful assistant.<|im_end|>\n<|im_start|>user\n", add_special_tokens=False))
 
         # Placeholders for each DNA
         start_id = self.text_tokenizer.convert_tokens_to_ids("<|dna_start|>")
@@ -267,6 +266,7 @@ class MultiModalInfer:
         # Append (clean) text after all DNA placeholders
         if clean_text:
             input_ids.extend(self.text_tokenizer.encode(clean_text, add_special_tokens=False))
+        input_ids.extend(self.text_tokenizer.encode("<|im_end|>\n<|im_start|>assistant\n", add_special_tokens=False))
 
         # Truncate & add EOS
         # if len(input_ids) > self.args.max_length - 1:
