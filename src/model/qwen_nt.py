@@ -7,7 +7,6 @@ import torch.nn.functional as F
 from transformers import AutoTokenizer, AutoModelForCausalLM, AutoModel, Qwen3ForCausalLM, AutoConfig
 from transformers.modeling_outputs import CausalLMOutputWithPast
 
-from transformers import EsmModel, EsmConfig
 
 
 class QwenWithNt(nn.Module):
@@ -25,8 +24,7 @@ class QwenWithNt(nn.Module):
         self.bio_config = config.bio_config
         # self.model = Qwen3ForCausalLM(self.text_config)
         self.model = AutoModelForCausalLM.from_config(self.text_config)
-        # self.bio_model = BertModel(self.bio_config)
-        # self.bio_model = EsmModel(self.bio_config, add_pooling_layer=False)
+
         self.bio_model = AutoModel.from_config(self.bio_config)
         self.multimodal_projector = nn.Sequential(
             nn.Linear(self.bio_config.hidden_size, self.text_config.hidden_size * 2),
