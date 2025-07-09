@@ -133,6 +133,7 @@ class IterableMultimodalDNADataSet(IterableDataset):
 
         # Process output based on mode
         if self.mode == 'sft':
+            input_ids.extend(self.tokenizer.encode("<|im_start|>assistant\n", add_special_tokens=False))
             output_ids = self.tokenizer.encode(output_text, add_special_tokens=False)
         else:
             output_ids = []
@@ -147,7 +148,7 @@ class IterableMultimodalDNADataSet(IterableDataset):
         input_ids.extend(output_ids)
         # Create labels
         if self.mode == 'sft':
-            labels = [self.tokenizer.pad_token_id] * input_len + output_ids  # Use -100 to ignore input tokens in loss calculation
+            labels = [-100] * input_len + output_ids  # Use -100 to ignore input tokens in loss calculation
         else:
             labels = input_ids.copy()
         
@@ -169,7 +170,7 @@ class IterableMultimodalDNADataSet(IterableDataset):
             pad_len = self.max_len - len(input_ids)
             if pad_len > 0:
                 input_ids.extend([self.tokenizer.pad_token_id] * pad_len)
-                labels.extend([self.tokenizer.pad_token_id] * pad_len)
+                labels.extend([-100] * pad_len)
                 attention_mask.extend([0] * pad_len)
 
         # Convert to tensors
@@ -188,9 +189,8 @@ class IterableMultimodalDNADataSet(IterableDataset):
         extracted_dnas = [match.group(1) for match in matches]
         clean_text = re.sub(pattern, "", input_text)
 
-        # Add BOS token if needed qwen是没有的 🌟
-        if self.tokenizer.bos_token_id is not None:
-            input_ids.append(self.tokenizer.bos_token_id)
+        # 添加Qwen系统提示格式，替代BOS token
+        input_ids.extend(self.tokenizer.encode("<|im_start|>system\nYou are a helpful assistant.<|im_end|>\n<|im_start|>user\n", add_special_tokens=False))
 
         for dna_seq in extracted_dnas:
             encoded_dna = self.dna_tokenizer(dna_seq, return_tensors='pt', padding='max_length', truncation=True, max_length=self.project_token_num)["input_ids"].squeeze(0)
@@ -206,6 +206,7 @@ class IterableMultimodalDNADataSet(IterableDataset):
         clean_text = clean_text.strip()
         if clean_text:
             input_ids.extend(self.tokenizer.encode(clean_text, add_special_tokens=False))
+        input_ids.extend(self.tokenizer.encode("<|im_end|>\n", add_special_tokens=False))
 
 class TransformersCompatibleDNADataset(torch.utils.data.Dataset):
     """

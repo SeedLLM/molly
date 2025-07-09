@@ -257,3 +257,57 @@ def set_up_trainable_param(model, args):
     else:
         print_rank_0('--->All parameters will be set to trainable as both `args.enable_list` and `args.diable_list` are None')
         disable_untrainable_params(model, [])
+
+
+import torch.nn as nn
+from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
+
+def pre_train_lora(model, args):
+    """
+    Pre-train lora parameters.
+    """
+    for param in model.bio_model.parameters():
+        param.requires_grad = False
+    target_modules = []
+    module_names = set()
+    for name, module in model.model.named_modules():
+        if isinstance(module, nn.Linear):
+            names = name.split(".")
+            target_name = names[-1]
+
+            if target_name != "lm_head" and target_name not in module_names:
+                target_modules.append(target_name)
+                module_names.add(target_name)
+
+    # Add attention-specific layers
+    attention_patterns = [
+        "q_proj",
+        "k_proj",
+        "v_proj",
+        "out_proj",
+        "query",
+        "key",
+        "value",
+    ]
+    for pattern in attention_patterns:
+        if pattern not in module_names:
+            target_modules.append(pattern)
+
+    target_modules = list(target_modules)
+
+    lora_config = LoraConfig(
+        r=32,
+        lora_alpha=64,
+        target_modules=target_modules,
+        lora_dropout=0.05,
+        init_lora_weights="gaussian",
+        bias="none",
+        task_type="CAUSAL_LM"
+    )
+    model.model = prepare_model_for_kbit_training(model.model)
+    model.model = get_peft_model(model.model, lora_config)
+    model.model.print_trainable_parameters()
+
+    for param in model.multimodal_projector.parameters():
+        param.requires_grad = False
+    return model
