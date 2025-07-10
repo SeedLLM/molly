@@ -1,7 +1,8 @@
 import copy
 from dataclasses import dataclass
 from typing import Optional
-from transformers import AutoConfig, BertConfig
+from transformers import AutoConfig, BertConfig, EsmConfig
+# from src.model.esm_config import EsmConfig
 
 @dataclass
 class MultimodalConfig:
@@ -32,7 +33,7 @@ class MultimodalConfig:
         if isinstance(self.text_config, dict):
             self.text_config = AutoConfig.from_pretrained(self.text_config['model_name'], **self.text_config.get('config', {}))
         if isinstance(self.bio_config, dict):
-            self.bio_config = BertConfig.from_pretrained(self.bio_config['model_name'], **self.bio_config.get('config', {}))
+            self.bio_config = EsmConfig.from_pretrained(self.bio_config['model_name'], **self.bio_config.get('config', {}))
 
 def get_qwen_bert_config(text_model_path, bio_model_path):
     """
@@ -48,6 +49,38 @@ def get_qwen_bert_config(text_model_path, bio_model_path):
     # Load base configurations
     text_config = AutoConfig.from_pretrained(text_model_path, trust_remote_code=True)
     bio_config = BertConfig.from_pretrained(bio_model_path, trust_remote_code=True)
+
+    # Create multimodal configuration
+    config = MultimodalConfig(
+        text_config=text_config,
+        bio_config=bio_config
+    )
+    
+    # Add model-specific configurations
+    config.text_config.use_cache = config.use_cache
+    # Set use_cache to False to avoid DynamicCache issues during distributed evaluation
+    config.text_config.use_cache = False 
+    if config.gradient_checkpointing:
+        config.text_config.gradient_checkpointing = True
+        config.bio_config.gradient_checkpointing = True
+    
+    return config
+
+def get_qwen_nt_config(text_model_path, bio_model_path):
+    """
+    Create a configuration for the multimodal model.
+    
+    Args:
+        text_model_path: Path to the Qwen model or configuration
+        bio_model_path: Path to the DNA-NT model or configuration
+        
+    Returns:
+        MultimodalConfig: Configuration for the multimodal model
+    """
+    # Load base configurations
+    text_config = AutoConfig.from_pretrained(text_model_path, trust_remote_code=True)
+    bio_config = EsmConfig.from_pretrained(bio_model_path, trust_remote_code=True)
+    # bio_config = AutoConfig.from_pretrained(bio_model_path, trust_remote_code=True)
 
     # Create multimodal configuration
     config = MultimodalConfig(
