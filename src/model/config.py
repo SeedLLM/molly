@@ -1,8 +1,8 @@
 import copy
 from dataclasses import dataclass
 from typing import Optional
-from transformers import AutoConfig, BertConfig
-from src.model.esm_config import EsmConfig
+from transformers import AutoConfig, BertConfig, EsmConfig
+# from src.model.esm_config import EsmConfig
 
 @dataclass
 class MultimodalConfig:

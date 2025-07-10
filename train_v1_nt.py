@@ -213,14 +213,14 @@ def setup_dataloaders(args, tokenizer, dna_tokenizer):
     return train_dataset, eval_dataset
 
 def main():
-    import pdb; pdb.set_trace()
+    # import pdb; pdb.set_trace()
     parser = ArgumentParser()
     # Logo info
     parser.add_argument('--experiment-name', type=str, default='Qwen_DNABERT_sft_exp_',
                        help='Experiment name for logging and checkpoints')
     parser.add_argument('--tensorboard', action='store_true',
                        help='Enable tensorboard logging')
-    parser.add_argument('--tb-log-dir', type=str, default=None,
+    parser.add_argument('--tb-log-dir', type=str, default='./logs',
                        help='Tensorboard log directory')
     parser.add_argument('--swanlab', action='store_true',
                        help='Enable swanlab logging')
@@ -350,7 +350,7 @@ def main():
     # Add clip_grad_max_norm if not present
     if not hasattr(args, 'clip_grad_max_norm'):
         args.clip_grad_max_norm = 1.0
-    
+    writer = None
     try:
         # Initialize distributed training
         deepspeed.init_distributed()
@@ -368,7 +368,10 @@ def main():
             elif args.tensorboard:
                 from torch.utils.tensorboard import SummaryWriter
                 log_dir = os.path.join(args.tb_log_dir, args.experiment_name + current_time)
+                os.makedirs(log_dir, exist_ok=True)
                 writer = SummaryWriter(log_dir=log_dir)
+                print_rank_0(f"TensorBoard logging enabled. Logs will be saved to: {log_dir}")
+                print_rank_0(f"To view logs, run: tensorboard --logdir={log_dir}")
         
         # Setup tokenizers
         tokenizer, dna_tokenizer = setup_tokenizers(args)
@@ -393,6 +396,10 @@ def main():
             print_rank_0(f"Batch size: {args.batch_size_per_gpu}")
             print_rank_0(f"Learning rate: {args.lr}")
             print_rank_0(f"Dataset: {args.train_dataset_path}")
+            if args.tensorboard:
+                print_rank_0(f"TensorBoard logging: Enabled")
+            elif args.swanlab:
+                print_rank_0(f"SwanLab logging: Enabled")
         
         # Initialize the MultimodalTrainer
         try:
@@ -403,6 +410,7 @@ def main():
                 eval_dataset=eval_dataset,
                 tokenizer=tokenizer,
                 data_collator=data_collator,
+                tensorboard_writer=writer,  # Pass tensorboard writer to trainer
             )
             
             # Start training
@@ -424,6 +432,8 @@ def main():
     
     finally:
         # Cleanup
+        if writer is not None:
+            writer.close()
         if dist.is_initialized():
             dist.destroy_process_group()
 
