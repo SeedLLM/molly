@@ -411,10 +411,25 @@ class MultimodalTrainer(Trainer):
         if self.is_world_process_zero():
             print_rank_0(f"保存模型到 {output_dir}")
             
-            # 1. 保存模型状态字典 - 使用 torch.save 而不是 safetensors
-            state_dict = unwrapped_model.state_dict()
-            torch.save(state_dict, os.path.join(output_dir, "pytorch_model.bin"))
-            print_rank_0(f"模型权重已保存到 {os.path.join(output_dir, 'pytorch_model.bin')}")
+            # 1. 检查模型是否包含LoRA权重并适当保存
+            if hasattr(self, 'custom_args') and getattr(self.custom_args, 'use_lora', False):
+                # 对于带有LoRA的模型，需要特殊处理
+                print_rank_0("检测到PEFT/LoRA模型，使用专用方法保存适配器...")
+                # 保存LoRA适配器权重
+                lora_output_dir = os.path.join(output_dir, "lora_weights")
+                os.makedirs(lora_output_dir, exist_ok=True)
+                unwrapped_model.model.save_pretrained(lora_output_dir)
+                print_rank_0(f"LoRA适配器权重已保存到 {lora_output_dir}")
+                
+                # 也保存完整的模型状态以便兼容
+                state_dict = unwrapped_model.state_dict()
+                torch.save(state_dict, os.path.join(output_dir, "pytorch_model.bin"))
+                print_rank_0(f"完整模型权重已保存到 {os.path.join(output_dir, 'pytorch_model.bin')}")
+            else:
+                # 常规模型的保存逻辑
+                state_dict = unwrapped_model.state_dict()
+                torch.save(state_dict, os.path.join(output_dir, "pytorch_model.bin"))
+                print_rank_0(f"模型权重已保存到 {os.path.join(output_dir, 'pytorch_model.bin')}")
             
             # 2. 保存配置
             if hasattr(unwrapped_model, "config"):
@@ -461,6 +476,7 @@ class MultimodalTrainer(Trainer):
                 'early_stopping_patience': self.early_stopping_patience,
             }
             
+            # 保存LoRA配置信息
             if hasattr(self, 'custom_args'):
                 config['multimodal_config'] = {
                     'dna_max_length': getattr(self.custom_args, 'multimodal_k_tokens', 64),
