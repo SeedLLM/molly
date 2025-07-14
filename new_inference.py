@@ -169,7 +169,7 @@ class MultiModalInfer:
 
         # 1) Extract sequences & clean text
         extracted_dnas: List[str] = re.findall(pattern, raw_text)
-        clean_text = re.sub(pattern, "", raw_text).strip()
+        clean_text = re.sub(pattern, "<DNA>", raw_text).strip()
 
         # 2) Construct input_ids
         input_ids: List[int] = []
@@ -267,7 +267,7 @@ class MultiModalInfer:
 
                 if idx <= 10:
                     print("\nSample output:")
-                    print(decoded[:500] + "..." if len(decoded) > 500 else decoded)
+                    print(decoded)
                     print("-" * 50)
             except Exception as e:
                 print(f"Error during generation: {str(e)}")

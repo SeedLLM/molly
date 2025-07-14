@@ -5,7 +5,7 @@ options="--experiment-name Qwen_DNABERT_sft_exp_2_8b_ \
 --swanlab \
 --swanlab-team BioMLLM_report \
 --swanlab-project BioMLLM_wandb \
---text-model-path /fs-computility/ai4agr/lijinzhe/basemodel/Qwen3-0.6B \
+--text-model-path /tos-bjml-ai4agr/lijinzhe/BioMLLM/Qwen3-8B \
 --bio-model-path /tos-bjml-ai4agr/lijinzhe/BioMLLM/DNABERT-2-117M \
 --multimodal-k-tokens 128 \
 --device cuda \
@@ -19,16 +19,16 @@ options="--experiment-name Qwen_DNABERT_sft_exp_2_8b_ \
 --eval-max-src-len 1024 \
 --mode sft \
 --batch-size-per-gpu 4 \
---eval-batch-size-per-gpu 8 \
---read-nums 50000 \
---eval-read-nums 500 \
+--eval-batch-size-per-gpu 4 \
+--read-nums 1000 \
+--eval-read-nums 20 \
 --epochs 1 \
 --lr 1.0e-5 \
 --ds-config-path /fs-computility/ai4agr/lijinzhe/code/BioMLLM_V2/zero2_config.json \
 --enable-list $enable_list \
---output-path /fs-computility/ai4agr/lijinzhe/res_data_model/0630_qwen3_50k \
---save-interval 50 \
---eval-interval 100 \
+--output-path /fs-computility/ai4agr/lijinzhe/res_data_model/0630_qwen3_8b_50k \
+--save-interval 30 \
+--eval-interval 50 \
 --show_avg_loss_step 20 \
 --save_trainable True \
 " 

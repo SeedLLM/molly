@@ -11,11 +11,11 @@ import torch
 import pandas as pd
 from tqdm import tqdm
 from torch.nn.utils.rnn import pad_sequence
-from transformers import AutoTokenizer, AutoModelForCausalLM, AutoModel
+from transformers import AutoTokenizer, AutoModelForCausalLM, AutoModel, AutoConfig
 from peft import PeftModel, PeftConfig  # 添加PEFT库导入
 
 # Import our custom modules
-from src.model import QwenWithBert, get_qwen_bert_config
+from src.model import QwenWithNt, get_qwen_nt_config
 from src.utils.tools import print_rank_0
 
 
@@ -51,7 +51,7 @@ def parse_args():
 
 
 class MultiModalInfer:
-    """Batch inference helper for Qwen + DNABERT multimodal model (training-style DNA injection)."""
+    """Batch inference helper for Qwen + NT multimodal model (training-style DNA injection)."""
 
     def __init__(self, args):
         self.args = args
@@ -81,14 +81,17 @@ class MultiModalInfer:
         args = self.args
         
         # Get model configuration
-        model_config = get_qwen_bert_config(args.text_model_path, args.bio_model_path)
+        model_config = get_qwen_nt_config(args.text_model_path, args.bio_model_path)
         
         # Explicitly set project_token_num to match training
         model_config.project_token_num = args.multimodal_k_tokens
         print(f"Setting project_token_num to {model_config.project_token_num}")
-        
+
+        # >>> ADD THIS LINE to fix the architecture mismatch <<< 是否添加？🌟
+        model_config.bio_config.intermediate_size = 8192
+
         # Create regular training-time model (DNA injected at <|dna_start|>)
-        self.model = QwenWithBert(model_config)
+        self.model = QwenWithNt(model_config)
         # Important: inform the model of special token IDs so it can find <|dna_start|> etc.
         self.model.set_special_tokens(self.text_tokenizer)
         
@@ -110,12 +113,27 @@ class MultiModalInfer:
                     self.model.model.load_state_dict(qwen_model.state_dict())
                     del qwen_model  # 释放内存
                     
-                    print(f"Loading base DNA-BERT model from {args.bio_model_path}")
-                    dna_model = AutoModel.from_pretrained(
-                        args.bio_model_path, 
-                        trust_remote_code=True,
-                        config=model_config.bio_config
+                    # 加载NT模型参数
+                    print(f"Loading NT model from {args.bio_model_path}")
+                    from src.model.esm_config import EsmConfig
+                    from src.model.modeling_esm import EsmModel
+                    
+                    # 直接从预训练模型加载配置，确保与预训练模型完全一致
+                    bio_config = EsmConfig.from_pretrained(args.bio_model_path)
+                    
+                    # 更新模型配置中的bio_config
+                    model_config.bio_config = bio_config
+                    
+                    # 重新创建bio_model部分，使用正确的配置
+                    self.model.bio_model = EsmModel(bio_config)
+                    
+                    # 加载预训练权重
+                    dna_model = EsmModel.from_pretrained(
+                        args.bio_model_path,
+                        config=bio_config
                     )
+                    
+                    # 加载权重时，strict=False以跳过不匹配的部分
                     self.model.bio_model.load_state_dict(dna_model.state_dict(), strict=False)
                     del dna_model  # 释放内存
                     
@@ -158,7 +176,7 @@ class MultiModalInfer:
         # Move model to device and set to evaluation mode
         self.model = self.model.to(torch.bfloat16).to(self.device)
         self.model.eval()
-        
+
     def _load_standard_model(self):
         """加载标准模型（非LoRA版本）"""
         args = self.args
@@ -189,7 +207,7 @@ class MultiModalInfer:
             print(f"Error loading checkpoint: {str(e)}")
             print("Loading base models without fine-tuned weights...")
             
-            # 加载Qwen模型参数
+            # Load Qwen model parameters
             print(f"Loading Qwen model from {args.text_model_path}")
             qwen_model = AutoModelForCausalLM.from_pretrained(
                 args.text_model_path, 
@@ -197,17 +215,34 @@ class MultiModalInfer:
                 torch_dtype=torch.bfloat16
             )
             self.model.model.load_state_dict(qwen_model.state_dict())
-            del qwen_model  # 释放内存
+            del qwen_model  # Free memory
             
-            # 加载DNA-BERT模型参数
-            print(f"Loading DNA-BERT model from {args.bio_model_path}")
-            dna_model = AutoModel.from_pretrained(
-                args.bio_model_path, 
-                trust_remote_code=True,
-                config=self.model.bio_config
+            # Load NT model parameters
+            print(f"Loading NT model from {args.bio_model_path}")
+            
+            # 加载DNA模型配置
+            from src.model.esm_config import EsmConfig
+            from src.model.modeling_esm import EsmModel
+            
+            # 直接从预训练模型加载配置，确保与预训练模型完全一致
+            bio_config = EsmConfig.from_pretrained(args.bio_model_path)
+            
+            # 更新模型配置中的bio_config
+            # model_config.bio_config = bio_config
+            
+            # 重新创建bio_model部分，使用正确的配置
+            self.model.bio_model = EsmModel(bio_config)
+            
+            # 加载预训练权重
+            print(f"Loading NT model from {args.bio_model_path}")
+            dna_model = EsmModel.from_pretrained(
+                args.bio_model_path,
+                config=bio_config
             )
+            
+            # 加载权重时，strict=False以跳过不匹配的部分
             self.model.bio_model.load_state_dict(dna_model.state_dict(), strict=False)
-            del dna_model  # 释放内存
+            del dna_model  # Free memory
             
             print("Base models loaded successfully")
 

@@ -2,7 +2,7 @@ import json
 import random
 from pathlib import Path
 from collections import defaultdict
-from typing import Union
+from typing import Union, Dict, List
 
 from transformers import AutoTokenizer, AutoModelForCausalLM
 import torch
@@ -78,7 +78,7 @@ def evaluate_label_match_qwen_chat(
 
             obj = json.loads(line)
             label = obj["label"]
-            llm_output = obj["llm_output"]
+            llm_output = obj["pre_output"]
             raw_input = obj.get("input", "")
             raw_output = obj.get("output", "")
 
@@ -143,15 +143,60 @@ def evaluate_label_match_qwen_chat(
         print(f"✅ Results saved to {output_file}")
 
     if results:
+        # 计算总体准确率
         acc = sum(r["correct"] for r in results)
         print(f"✅ Overall Accuracy: {acc}/{len(results)} = {acc / len(results):.2%}")
+        
+        # 按任务统计准确率
+        task_stats = calculate_accuracy_by_task(results)
+        print("\n📊 各任务准确率统计:")
+        print("-" * 60)
+        print(f"{'Task Name':<30} | {'Correct':<8} | {'Total':<8} | {'Accuracy':<10}")
+        print("-" * 60)
+        
+        for task, (correct, total) in sorted(task_stats.items(), key=lambda x: x[1][1], reverse=True):
+            accuracy = correct / total if total > 0 else 0
+            print(f"{task[:30]:<30} | {correct:<8} | {total:<8} | {accuracy:.2%}")
+        
+        print("-" * 60)
+        
+        # 保存任务统计结果
+        if output_file:
+            stats_output = output_file.replace('.jsonl', '_task_stats.json')
+            task_stats_json = {
+                task: {"correct": correct, "total": total, "accuracy": correct / total if total > 0 else 0}
+                for task, (correct, total) in task_stats.items()
+            }
+            with open(stats_output, "w", encoding="utf-8") as f_stats:
+                json.dump(task_stats_json, f_stats, ensure_ascii=False, indent=2)
+            print(f"✅ Task statistics saved to {stats_output}")
 
     return results
 
+def calculate_accuracy_by_task(results: List[Dict]) -> Dict[str, tuple]:
+    """
+    按任务统计准确率
+    
+    Args:
+        results: 评估结果列表
+        
+    Returns:
+        Dict[str, tuple]: 任务名称到(正确数, 总数)的映射
+    """
+    task_stats = defaultdict(lambda: [0, 0])  # [correct_count, total_count]
+    
+    for result in results:
+        task = result.get("task", "Unknown")
+        task_stats[task][1] += 1  # 总数+1
+        if result.get("correct", False):
+            task_stats[task][0] += 1  # 正确数+1
+    
+    # 将列表转换为元组
+    return {task: tuple(counts) for task, counts in task_stats.items()}
 
 
 if __name__ == "__main__":
-    sample_file_path = "/fs-computility/ai4agr/lijinzhe/res_data_model/0621_test/sampled_by_task.jsonl"
+    sample_file_path = "/fs-computility/ai4agr/lijinzhe/res_data_model/biomllm_res/inference_results/Qwen3_4B_NT_sft_exp1_0710/predictions_300_samples_step500.jsonl"
     llm_path="/fs-computility/ai4agr/lijinzhe/basemodel/Qwen3-14B"
     # sample_jsonl_by_task(
     #     input_dir="/fs-computility/ai4agr/lijinzhe/res_data_model/0621_test",
@@ -159,8 +204,8 @@ if __name__ == "__main__":
     #     sample_num_per_task=20
     # )
     evaluate_label_match_qwen_chat(
-    input_file=sample_file_path,
-    model_path=llm_path,
-    output_file="eval_result.jsonl",
-    max_new_tokens=512)
+        input_file=sample_file_path,
+        model_path=llm_path,
+        output_file="Qwen3_4B_NT_sft_exp1_0710_step500.jsonl",
+        max_new_tokens=512)
 

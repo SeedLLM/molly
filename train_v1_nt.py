@@ -21,7 +21,7 @@ import deepspeed
 from src.trainer import MultimodalTrainer
 from src.model import QwenWithBert, get_qwen_bert_config
 from src.dataset import load_dataloder
-from src.utils import print_rank_0, refresh_config, set_up_trainable_param, init_swanlab_rank_0, swanlab_log_rank_0
+from src.utils import print_rank_0, refresh_config, set_up_trainable_param, init_swanlab_rank_0, swanlab_log_rank_0, pre_train_lora
 
 from src.model import QwenWithNt, get_qwen_nt_config, EsmConfig, EsmModel
 
@@ -331,6 +331,13 @@ def main():
     parser.add_argument('--greater-is-better', action='store_true',
                        help='Whether higher metric is better')
     
+    # LoRA training
+    parser.add_argument('--use-lora', action='store_true',
+                       help='Whether to use LoRA for parameter-efficient training')
+    
+    parser.add_argument('--save-total-limit', type=int, default=10,
+                        help='Number of total checkpoints to keep')
+    
     # DeepSpeed
     parser.add_argument('--ds-config-path', type=str, required=True,
                        help='Path to DeepSpeed configuration')
@@ -382,8 +389,13 @@ def main():
         # Get dataloaders and convert to datasets for Transformers Trainer
         train_dataset, eval_dataset = setup_dataloaders(args, tokenizer, dna_tokenizer)
         
-        # Apply parameter freezing
-        set_up_trainable_param(model, args)
+        # Apply parameter freezing or pre-train lora based on args.use-lora
+        if args.use_lora:
+            print_rank_0("Using LoRA for parameter-efficient training")
+            model = pre_train_lora(model, args)
+        else:
+            print_rank_0("Using full parameter fine-tuning")
+            set_up_trainable_param(model, args)
         
         # Create a custom data collator
         data_collator = MultimodalDataCollator()

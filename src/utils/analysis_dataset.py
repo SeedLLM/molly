@@ -3,6 +3,7 @@ data analysis
 """
 import os
 import json
+import random
 from typing import List, Dict
 from collections import defaultdict
 
@@ -116,6 +117,67 @@ class JsonlDatasetInspector:
                 print(f"\n  样本 {i+1}:\n{json.dumps(sample, ensure_ascii=False, indent=2)}")
 
         return dict(task_samples)
+        
+    def extract_n_samples_per_task(self, n: int, output_file: str, random_seed: int = 42, shuffle: bool = True) -> Dict[str, List[dict]]:
+        """
+        为每个任务抽取n条样本，并将所有样本写入新的JSONL文件
+        
+        Args:
+            n: 每个任务需要抽取的样本数量
+            output_file: 输出文件路径
+            random_seed: 随机种子，用于随机抽样
+            shuffle: 是否打乱最终的样本顺序
+            
+        Returns:
+            一个字典，键为任务名称，值为该任务抽取的样本列表
+        """
+        # 初始化随机数生成器
+        random.seed(random_seed)
+        
+        # 收集每个任务的所有样本
+        all_task_samples = defaultdict(list)
+        
+        print(f"正在读取并按任务分类样本...")
+        with open(self.file_path, 'r', encoding='utf-8') as f:
+            for i, line in enumerate(f):
+                try:
+                    data = json.loads(line)
+                    task = data.get("task", "UNKNOWN")
+                    all_task_samples[task].append(data)
+                except json.JSONDecodeError:
+                    print(f"第 {i+1} 行 JSON 解码失败，跳过")
+        
+        # 为每个任务抽取n个样本
+        selected_samples = {}
+        total_selected = 0
+        
+        for task, samples in all_task_samples.items():
+            # 如果样本数小于n，全部保留；否则随机抽取n个
+            if len(samples) <= n:
+                selected = samples
+            else:
+                selected = random.sample(samples, n)
+            
+            selected_samples[task] = selected
+            total_selected += len(selected)
+            print(f"任务 '{task}': 从 {len(samples)} 条样本中抽取了 {len(selected)} 条")
+        
+        # 将所有样本合并到一个列表
+        all_selected = []
+        for task_samples in selected_samples.values():
+            all_selected.extend(task_samples)
+        
+        # 可选：打乱样本顺序
+        if shuffle:
+            random.shuffle(all_selected)
+        
+        # 写入新文件
+        with open(output_file, 'w', encoding='utf-8') as f:
+            for sample in all_selected:
+                f.write(json.dumps(sample, ensure_ascii=False) + '\n')
+        
+        print(f"\n✅ 已成功抽取 {total_selected} 条样本（来自 {len(selected_samples)} 个任务），并保存到: {os.path.abspath(output_file)}")
+        return selected_samples
 
 if __name__ == "__main__":
     # 初始化
@@ -126,10 +188,13 @@ if __name__ == "__main__":
     total = inspector.count_lines()
     print(f"\n总样本数: {total}")
     # 查看前 5 条样本
-    inspector.preview(num_lines=3)
+    # inspector.preview(num_lines=3)
     # 统计各个 task 的样本分布
     task_stats = inspector.count_tasks(visualize=True, save_path="train_task_pie.png")
     # 按每个任务打印最多 3 条样本
     # inspector.visualize_per_task(num_samples_per_task=1)
+    
+    # 为每个任务抽取10条样本，创建一个平衡数据集
+    inspector.extract_n_samples_per_task(500, output_file="balanced_dna_train_dataset.jsonl")
 
 
