@@ -72,7 +72,7 @@ def init_swanlab_rank_0(args, experiment_suffix=""):
             print_rank_0(f"SwanLab project: {args.swanlab_project}, team: {args.swanlab_team}")
             
             # 登录
-            swanlab.login(api_key='7BZRyWx1ftGxsthmlgZ1Q', save=True)
+            swanlab.login(api_key='', save=True)
             print_rank_0("SwanLab login successful")
             
             # 初始化
