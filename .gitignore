@@ -1,3 +1,13 @@
 *.log
 *.jsonl
 submit.sh
+/__pycache__/
+*.pyc
+*.pkl
+*.pt
+*.h5
+*.ckpt
+*.zip
+*.tar.gz
+*.tar
+*.rar
