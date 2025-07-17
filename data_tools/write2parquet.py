@@ -54,21 +54,29 @@ def merge_biomarkers_to_parquet(
         seqs: List[str] = []
         kinds: List[str] = []
 
-        def _strip(m: re.Match) -> str:
-            kind = m.group(1).lower()
-            seq_raw = m.group(2)
+        # 查找所有标签匹配，但不替换原始输入
+        matches = tag_re.finditer(raw_input)
+        for match in matches:
+            kind = match.group(1).lower()
+            seq_raw = match.group(2)
             seq_clean = re.sub(r"[^A-Za-z]", "", seq_raw).upper()  # 大写化 + 清除非字母字符
             kinds.append(kind)
             seqs.append(seq_clean)
-            return ""
 
-        cleaned_input = tag_re.sub(_strip, raw_input).strip()
+        # 保留原始输入，不移除标签内容
+        cleaned_input = raw_input
 
+        # 验证序列
+        valid_sequence = True
         for k, s in zip(kinds, seqs):
             if k in allow_base and not allow_base[k].fullmatch(s):
                 print(f"[filtered] kind={k}, invalid sequence: {s}")
                 removed_invalid_seq += 1
-                return
+                valid_sequence = False
+                break
+
+        if not valid_sequence:
+            return
 
         kind_str = "-".join(kinds)
 
@@ -117,11 +125,11 @@ def merge_biomarkers_to_parquet(
 
 # ------------------- 示例调用 -------------------
 if __name__ == "__main__":
-    base_dir = "/fs-computility/ai4agr/lijinzhe/code/BioMLLM_V2/data_tools/sample"
+    base_dir = "/fs-computility/ai4agr/lijinzhe/code/BioMLLM_V2/data_tools/sample/"
     files = [
-        "balanced_dna_rna_val_dataset.jsonl",
+        "/fs-computility/ai4agr/lijinzhe/code/BioMLLM_V2/data_tools/sample/balanced_dna_rna_val_dataset.jsonl",
     ]
-    out_path = f"{base_dir}/val_nt.parquet"
+    out_path = f"{base_dir}/stage3_train_nt_dna_rna.parquet"
 
     merge_biomarkers_to_parquet(
         base_dir,
