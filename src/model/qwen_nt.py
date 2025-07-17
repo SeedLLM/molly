@@ -22,7 +22,6 @@ class QwenWithNt(nn.Module):
 
         self.text_config = config.text_config
         self.bio_config = config.bio_config
-        # self.model = Qwen3ForCausalLM(self.text_config)
         self.model = AutoModelForCausalLM.from_config(self.text_config)
 
         self.bio_model = AutoModel.from_config(self.bio_config)
@@ -108,8 +107,8 @@ class QwenWithNt(nn.Module):
         self,
         input_ids: Optional[torch.LongTensor] = None,
         attention_mask: Optional[torch.LongTensor] = None,
-        dna_ids_lists: Optional[List[List[torch.LongTensor]]] = None,
-        dna_start_pos_lists: Optional[List[List[int]]] = None,
+        dna_ids_list: Optional[List[List[torch.LongTensor]]] = None,
+        dna_start_pos_list: Optional[List[List[int]]] = None,
         labels: Optional[torch.LongTensor] = None,
         past_key_values: Optional[List[torch.FloatTensor]] = None,
         use_cache: Optional[bool] = None,
@@ -120,6 +119,12 @@ class QwenWithNt(nn.Module):
     ) -> Union[Tuple[torch.Tensor, ...], CausalLMOutputWithPast]:
         return_dict = return_dict if return_dict is not None else self.text_config.use_return_dict
 
+        # print(f"Input IDs shape: {input_ids.shape if input_ids is not None else 'None'}")
+        # print(f"DNA IDs list: {dna_ids_list if dna_ids_list is not None else 'None'}")
+        # print(f"DNA start positions: {dna_start_pos_list if dna_start_pos_list is not None else 'None'}")
+        # print(f"Attention mask shape: {attention_mask.shape if attention_mask is not None else 'None'}")
+        # print(f"Labels shape: {labels.shape if labels is not None else 'None'}")
+
         # Always disable cache during distributed training/evaluation to avoid DynamicCache errors
         if torch.distributed.is_initialized() and torch.distributed.get_world_size() > 1:
             use_cache = False
@@ -128,22 +133,22 @@ class QwenWithNt(nn.Module):
         hidden_states = self.model.get_input_embeddings()(input_ids)
 
         # Auto infer start positions if not provided
-        if dna_ids_lists is not None:
-            if dna_start_pos_lists is None:
-                dna_start_pos_lists = []
+        if dna_ids_list is not None:
+            if dna_start_pos_list is None:
+                dna_start_pos_list = []
                 for ids in input_ids:
                     positions = (ids == self.dna_start_token_id).nonzero(as_tuple=True)[0].tolist()
-                    dna_start_pos_lists.append(positions)
+                    dna_start_pos_list.append(positions)
 
             # Sanity check
-            for i in range(len(dna_ids_lists)):
-                assert len(dna_ids_lists[i]) == len(dna_start_pos_lists[i]), \
+            for i in range(len(dna_ids_list)):
+                assert len(dna_ids_list[i]) == len(dna_start_pos_list[i]), \
                     f"Mismatch in DNA count vs start_pos count at index {i}"
 
             hidden_states = self.process_dna_sequences(
                 hidden_states,
-                dna_ids_lists,
-                dna_start_pos_lists,
+                dna_ids_list,
+                dna_start_pos_list,
                 input_ids.device
             )
 
@@ -177,8 +182,10 @@ class QwenWithNt(nn.Module):
         no_repeat_ngram_size: Optional[int] = None,
         **generate_kwargs
     ) -> torch.LongTensor:
-        device = input_ids.device
+        
 
+
+        device = input_ids.device
         # Get embeddings
         hidden_states = self.model.get_input_embeddings()(input_ids)
 
