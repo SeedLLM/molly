@@ -1,8 +1,9 @@
 import os
+import re
 import pandas as pd
 import torch
 import numpy as np
-from typing import Dict, Any
+from typing import Dict, Any, List
 from torch.utils.data import Dataset
 from tqdm import tqdm
 from multiprocessing import Pool
@@ -58,7 +59,7 @@ class DNARNADataset(Dataset):
         self.padding = dataset_config.padding
 
         # Special tokens
-        self._precompute_token_ids()
+        self._pretokenize_special_tokens()
 
         # 预定义固定内容的分词结果
         self.system_prompt_ids = self.tokenizer.encode(
@@ -111,61 +112,123 @@ class DNARNADataset(Dataset):
         
         sample = self.data[idx]
         processed = self.process_sample(sample)
-        assert len(processed['dna_ids_list']) == len(processed['dna_start_pos_list']), \
+        assert len(processed['omic_ids']) == len(processed['omic_start_pos_list']), \
             f"Mismatch in DNA IDs and start positions for sample {idx}: {len(processed['dna_ids_list'])} vs {len(processed['dna_start_pos_list'])}"
         return processed
 
-    def _precompute_token_ids(self):
-        """预计算所有特殊token的ID"""
-        self.dna_start_id = self.tokenizer.convert_tokens_to_ids("<|dna_start|>")
-        self.dna_end_id = self.tokenizer.convert_tokens_to_ids("<|dna_end|>")
-        self.dna_pad_id = self.tokenizer.convert_tokens_to_ids("<|dna_pad|>")
-        self.rna_start_id = self.tokenizer.convert_tokens_to_ids("<|rna_start|>")
-        self.rna_end_id = self.tokenizer.convert_tokens_to_ids("<|rna_end|>")
-        self.rna_pad_id = self.tokenizer.convert_tokens_to_ids("<|rna_pad|>")
+    def _pretokenize_special_tokens(self):
+        self.dna_start_token = "<|dna_start|>"
+        self.dna_end_token = "<|dna_end|>"
+        self.dna_pad_token = "<|dna_pad|>"
+        self.rna_start_token = "<|rna_start|>"
+        self.rna_end_token = "<|rna_end|>"
+        self.rna_pad_token = "<|rna_pad|>"
+        self.dna_start_id = self.tokenizer.convert_tokens_to_ids(self.dna_start_token)
+        self.dna_end_id = self.tokenizer.convert_tokens_to_ids(self.dna_end_token)
+        self.dna_pad_id = self.tokenizer.convert_tokens_to_ids(self.dna_pad_token)
+        self.rna_start_id = self.tokenizer.convert_tokens_to_ids(self.rna_start_token)
+        self.rna_end_id = self.tokenizer.convert_tokens_to_ids(self.rna_end_token)
+        self.rna_pad_id = self.tokenizer.convert_tokens_to_ids(self.rna_pad_token)
         self.eos_id = self.tokenizer.eos_token_id
         self.pad_id = self.tokenizer.pad_token_id
 
-    @staticmethod
-    def _preprocess_sample(sample: dict, tokenizer) -> dict:
+    def _preprocess_sample(self, sample: dict, tokenizer) -> dict:
         """
         Format a Parquet example into DNA-LLM format suitable for processing.
         
         The Parquet structure already has:
         - "input": Clean text (tags removed)
-        - "sequence": List of extracted sequences
         - "kind": Hyphen-separated types like "dna" or "dna-rna"
         """
-        sequences = sample.get("sequence", [])
+
         kinds_string = sample.get("kind", "").lower()
         kinds = kinds_string.split("-") if kinds_string else []
+        kinds = list(set(kinds))
         
         # 预处理文本内容
         input_text = sample.get("input", "").strip()
         output_text = sample.get("output", "").strip()
         reasoning = sample.get("think", "").strip()
+
+        # 提取 DNA/RNA 序列，並記錄位置
+        pattern_map = {
+            "dna": r"<dna>\s*([ACGTacgt]+)\s*<dna>",
+            "rna": r"<rna>\s*([ACGTacgt]+)\s*<rna>"
+        }
+
+        # Determine which special tokens to use based on sequence type
+        tag_map = {
+            "dna": {
+                "start": self.dna_start_id,
+                "pad": self.dna_pad_id,
+                "end": self.dna_end_id,
+            },
+            "rna": {
+                "start": self.rna_start_id,
+                "pad": self.rna_pad_id,
+                "end": self.rna_end_id,
+            }
+        }
+
+        seq_info: List[Dict[str, any]] = []
+        raw_seqs: List[str] = []
+
+        for kind in kinds:
+            pat = pattern_map.get(kind)
+            if not pat:
+                continue
+            for m in re.finditer(pat, input_text, flags=re.IGNORECASE):
+                raw_seq = m.group(1).upper()
+                seq_info.append({"type": kind, "start": m.start(), "end": m.end()})
+                raw_seqs.append(raw_seq)
         
-        # 提前分词文本内容
-        input_token_ids = tokenizer.encode(input_text, add_special_tokens=False) if input_text else []
-        output_token_ids = tokenizer.encode(output_text, add_special_tokens=False) if output_text else []
-        reasoning_token_ids = tokenizer.encode(reasoning, add_special_tokens=False) if reasoning else []
+
+        input_ids = list(self.system_prompt_ids)
+        omic_start_pos_list = []
+
+        start = 0
+        # encode 非序列部分，並記錄序列起始位置
+        for info in sorted(seq_info, key=lambda x: x["start"], reverse=False):
+            seq_type = info["type"]
+            s, e = info["start"], info["end"]
+
+            input_ids.extend(
+                tokenizer.encode(input_text[start:s], add_special_tokens=False)
+            )
+            omic_start_pos_list.append(len(input_ids))
+
+            input_ids.append(tag_map[seq_type]["start"])
+            input_ids.extend([tag_map[seq_type]["pad"]] * self.project_token_num)
+            input_ids.append(tag_map[seq_type]["end"])
+
+            start = e
+
+        # 添加剩余文本
+        if start < len(input_text):
+            input_ids.extend(
+                tokenizer.encode(input_text[start:], add_special_tokens=False)
+            )
+        
+        # Encode the sequence
+        output_ids = tokenizer.encode(output_text, add_special_tokens=False) if output_text else []
+        reasoning_ids = tokenizer.encode(reasoning, add_special_tokens=False) if reasoning else []
+
         
         # 处理序列数据
-        sequence_data = []
-        for i, seq in enumerate(sequences):
-            seq_type = kinds[i] if i < len(kinds) else "dna"
-            # 仅存储原始序列，编码将在__getitem__中批量处理
-            sequence_data.append({
-                "sequence": seq, 
-                "type": seq_type,
-                "length": len(seq)
-            })
+        omic_ids_list = []
+
+        for i, seq in enumerate(raw_seqs):
+            seq_type = seq_info[i]["type"]
+            encoded_seq = self._encode_sequence(seq, seq_type)
+            omic_ids_list.append(encoded_seq)
+
         
         return {
-            "input_token_ids": input_token_ids,
-            "output_token_ids": output_token_ids,
-            "reasoning_token_ids": reasoning_token_ids,
-            "sequence_data": sequence_data,
+            "input_ids": input_ids,
+            "output_ids": output_ids,
+            "reasoning_token_ids": reasoning_ids,
+            "omic_ids_list": omic_ids_list,
+            "omic_start_pos_list": omic_start_pos_list,
             "task": sample.get("task", ""),
             "kind": kinds_string,
             "label": sample.get("label", "")
@@ -176,43 +239,14 @@ class DNARNADataset(Dataset):
         """
         Process a sample into model-ready format with tokenized sequences.
         """
-        input_ids = list(self.system_prompt_ids)
-
-        dna_ids_list = []
-        dna_start_pos_list = []
-
-        
-        # Insert sequences immediately after user start tag
-        for seq_info in sample["sequence_data"]:
-            seq = seq_info["sequence"]
-            seq_type = seq_info["type"]
-
-            encoded_seq = self._encode_sequence(seq, seq_type)
-            dna_ids_list.append(encoded_seq)
-
-            dna_start_pos_list.append(len(input_ids))
-
-            # Determine which special tokens to use based on sequence type
-            start_token_id = self.dna_start_id if seq_type == "dna" else self.rna_start_id
-            pad_token_id = self.dna_pad_id if seq_type == "dna" else self.rna_pad_id
-            end_token_id = self.dna_end_id if seq_type == "dna" else self.rna_end_id
-
-            # Add start token, padding, and end token
-            input_ids.extend([
-                start_token_id,
-                *[pad_token_id] * self.project_token_num,
-                end_token_id
-            ])
-
-        # 添加预处理的用户输入
-        input_ids.extend(sample["input_token_ids"])
+        input_ids = sample["input_ids"]
 
         # 添加助手起始标记
         input_ids.extend(self.assistant_start_ids)
 
         # Process output based on mode
         if self.mode == 'sft':
-            output_ids = list(sample["output_token_ids"])
+            output_ids = sample["output_ids"]
         else:
             output_ids = []
 
@@ -249,12 +283,11 @@ class DNARNADataset(Dataset):
             labels.extend([-100] * pad_len)
             attention_mask.extend([0] * pad_len)
 
-
         # Convert to tensors
         return {
             "input_ids": torch.LongTensor(input_ids),
-            "dna_ids_list":  torch.stack(dna_ids_list) if dna_ids_list else None,
-            "dna_start_pos_list": torch.LongTensor(dna_start_pos_list) if dna_start_pos_list else None,
+            "omic_ids": torch.stack(sample["omic_ids_list"]),
+            "omic_start_pos_list": sample["omic_start_pos_list"],
             "labels": torch.LongTensor(labels),
             "attention_mask": torch.LongTensor(attention_mask),
             "cal_metric_pos": cal_metric_pos,
@@ -271,7 +304,7 @@ class DNARNADataset(Dataset):
         encoding = self.dna_tokenizer(
             seq, 
             padding='max_length',
-            max_length=self.project_token_num,
+            max_length= self.project_token_num,
             truncation=True,
             return_tensors='pt'
         )
@@ -289,14 +322,15 @@ def qwen_dna_collate_fn(batch):
     Returns:
         Batched tensors suitable for model input
     """
+
     input_ids = [sample["input_ids"] for sample in batch]
     labels = [sample["labels"] for sample in batch]
     attention_mask = [sample["attention_mask"] for sample in batch]
     cal_metric_pos = [sample.get("cal_metric_pos") for sample in batch]
-    dna_start_pos_lists = [sample.get("dna_start_pos_list", []) for sample in batch]
-    dna_ids = [sample.get("dna_ids_list", None) for sample in batch]
-    
-    dna_counts = [len(dna_ids_list) for dna_ids_list in dna_start_pos_lists]
+    omic_start_pos_lists = [sample.get("omic_start_pos_list", []) for sample in batch]
+    omic_counts = [len(omic_start_pos_list) for omic_start_pos_list in omic_start_pos_lists]
+    omic_ids = [sample.get("omic_ids", None) for sample in batch]
+
         
     input_ids = torch.nn.utils.rnn.pad_sequence(
         input_ids, batch_first=True, padding_value=0
@@ -307,22 +341,21 @@ def qwen_dna_collate_fn(batch):
     attention_mask = torch.nn.utils.rnn.pad_sequence(
         attention_mask, batch_first=True, padding_value=0
     )
-    dna_ids = torch.nn.utils.rnn.pad_sequence(
-        dna_ids, batch_first=True, padding_value=0
-    ) if dna_ids else None
-
-    dna_start_pos_lists = torch.nn.utils.rnn.pad_sequence(
-        [torch.tensor(pos) for pos in dna_start_pos_lists],
+    omic_ids = torch.nn.utils.rnn.pad_sequence(
+        omic_ids, batch_first=True, padding_value=0
+    ) if omic_ids else None
+    omic_start_pos_lists = torch.nn.utils.rnn.pad_sequence(
+        [torch.tensor(pos) for pos in omic_start_pos_lists],
         batch_first=True, padding_value=-1
-    ) if dna_start_pos_lists else None
+    ) if omic_start_pos_lists else None
     
     return {
         "input_ids": input_ids,
         "labels": labels,
         "attention_mask": attention_mask,
-        "dna_ids_list": dna_ids,
-        "dna_start_pos_list": dna_start_pos_lists,
-        "dna_counts": dna_counts,
+        "omic_ids": omic_ids,
+        "omic_start_pos_list": omic_start_pos_lists,
+        "omic_counts": omic_counts,
         "cal_metric_pos": cal_metric_pos,
     }
 
@@ -399,7 +432,7 @@ if __name__ == "__main__":
         # Parse arguments
         parser = argparse.ArgumentParser(description="Test DNA/RNA Dataset")
         parser.add_argument("--parquet_path", type=str, 
-                            default="/tos-bjml-ai4agr/lijinzhe/dataset/BioMLLM/stage3_train_data/stage3_train_nt.parquet")
+                            default="/tos-bjml-ai4agr/lijinzhe/dataset/BioMLLM/stage3_train_data/val_nt_dna_rna.parquet")
         parser.add_argument("--text_model_path", type=str, default="/tos-bjml-ai4agr/lijinzhe/BioMLLM/Qwen3-4B")
         parser.add_argument("--bio_model_path", type=str, default="/tos-bjml-ai4agr/lijinzhe/BioModel/nucleotide-transformer/")
         parser.add_argument("--num_samples", type=int, default=20, help="Number of samples to test")
@@ -513,7 +546,7 @@ if __name__ == "__main__":
         # Import for HuggingFace dataset testing
         from datasets import load_dataset
         
-        parquet_path = "/tos-bjml-ai4agr/lijinzhe/dataset/BioMLLM/stage3_train_data/stage3_train_nt.parquet"
+        parquet_path = "/tos-bjml-ai4agr/lijinzhe/dataset/BioMLLM/stage3_train_data/val_nt_dna_rna.parquet"
         # Step 1: 加载 parquet 文件为 Hugging Face Dataset
         dataset = load_dataset("parquet", data_files=parquet_path)["train"]
         # Step 2: 映射到标准 DNA-LLM 格式

@@ -63,6 +63,7 @@ class QwenWithNt(nn.Module):
         返回：
             注入 DNA 表征后的 hidden_states，形状 [B, L, D]
         """
+
         batch_size = hidden_states.shape[0]
 
         flat_dna_ids = []  # 展平成一批 DNA 序列，便于统一送入 BERT
@@ -85,6 +86,8 @@ class QwenWithNt(nn.Module):
         # 使用 BERT/BioBERT 获取 DNA 表征
         dna_outputs = self.bio_model(
             padded_dna,
+            attention_mask=(padded_dna != 1).long(),  # 1 是 padding token
+            encoder_attention_mask=(padded_dna != 1).long(),
             output_hidden_states=True,
             return_dict=True
         )
@@ -97,6 +100,9 @@ class QwenWithNt(nn.Module):
         for i, (b, start_pos, length) in enumerate(mapping):
             # 将投影后的 DNA 表征插入到 hidden_states 中 <|dna_start|> 后的位置
             # 注意：最多注入 self.project_token_num 个 token
+            # 如果start_pos是 -1，表示没有 DNA 序列
+            if start_pos == -1:
+                continue
             hidden_states[b, start_pos + 1: start_pos + 1 + self.project_token_num, :] = \
                 proj_embeddings[i, :self.project_token_num, :]
 
@@ -107,8 +113,8 @@ class QwenWithNt(nn.Module):
         self,
         input_ids: Optional[torch.LongTensor] = None,
         attention_mask: Optional[torch.LongTensor] = None,
-        dna_ids_list: Optional[List[List[torch.LongTensor]]] = None,
-        dna_start_pos_list: Optional[List[List[int]]] = None,
+        omic_ids: Optional[List[List[torch.LongTensor]]] = None,
+        omic_start_pos_list: Optional[List[List[int]]] = None,
         labels: Optional[torch.LongTensor] = None,
         past_key_values: Optional[List[torch.FloatTensor]] = None,
         use_cache: Optional[bool] = None,
@@ -119,36 +125,35 @@ class QwenWithNt(nn.Module):
     ) -> Union[Tuple[torch.Tensor, ...], CausalLMOutputWithPast]:
         return_dict = return_dict if return_dict is not None else self.text_config.use_return_dict
 
-        # print(f"Input IDs shape: {input_ids.shape if input_ids is not None else 'None'}")
-        # print(f"DNA IDs list: {dna_ids_list if dna_ids_list is not None else 'None'}")
-        # print(f"DNA start positions: {dna_start_pos_list if dna_start_pos_list is not None else 'None'}")
-        # print(f"Attention mask shape: {attention_mask.shape if attention_mask is not None else 'None'}")
-        # print(f"Labels shape: {labels.shape if labels is not None else 'None'}")
-
         # Always disable cache during distributed training/evaluation to avoid DynamicCache errors
         if torch.distributed.is_initialized() and torch.distributed.get_world_size() > 1:
             use_cache = False
+
+        # print(f"Input IDs shape: {input_ids.shape if input_ids is not None else 'None'}")
+        # print(f"Omic IDs shape: {omic_ids.shape if omic_ids is not None else 'None'}")
+        # print(f"Omic Start Positions: {omic_start_pos_list if omic_start_pos_list is not None else 'None'}")
+
 
         # Get token embeddings
         hidden_states = self.model.get_input_embeddings()(input_ids)
 
         # Auto infer start positions if not provided
-        if dna_ids_list is not None:
-            if dna_start_pos_list is None:
-                dna_start_pos_list = []
+        if omic_ids is not None:
+            if omic_start_pos_list is None:
+                omic_start_pos_list = []
                 for ids in input_ids:
                     positions = (ids == self.dna_start_token_id).nonzero(as_tuple=True)[0].tolist()
-                    dna_start_pos_list.append(positions)
+                    omic_start_pos_list.append(positions)
 
             # Sanity check
-            for i in range(len(dna_ids_list)):
-                assert len(dna_ids_list[i]) == len(dna_start_pos_list[i]), \
+            for i in range(len(omic_ids)):
+                assert len(omic_ids[i]) == len(omic_start_pos_list[i]), \
                     f"Mismatch in DNA count vs start_pos count at index {i}"
 
             hidden_states = self.process_dna_sequences(
                 hidden_states,
-                dna_ids_list,
-                dna_start_pos_list,
+                omic_ids,
+                omic_start_pos_list,
                 input_ids.device
             )
 
