@@ -11,3 +11,5 @@ submit.sh
 *.tar.gz
 *.tar
 *.rar
+early_version/
+swanlab/
