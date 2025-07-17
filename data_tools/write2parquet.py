@@ -87,7 +87,6 @@ def merge_biomarkers_to_parquet(
                 "think": "",
                 "output": obj.get("output", ""),
                 "label": label_str,
-                "sequence": seqs,
                 "kind": kind_str,
             }
         )
@@ -110,7 +109,7 @@ def merge_biomarkers_to_parquet(
     # ---------- 保存 ----------
     df = pd.DataFrame(
         records,
-        columns=["task", "input", "think", "output", "label", "sequence", "kind"],
+        columns=["task", "input", "think", "output", "label", "kind"],
     )
     df.to_parquet(out_parquet, engine="pyarrow", index=False)
 
@@ -125,11 +124,11 @@ def merge_biomarkers_to_parquet(
 
 # ------------------- 示例调用 -------------------
 if __name__ == "__main__":
-    base_dir = "/fs-computility/ai4agr/lijinzhe/code/BioMLLM_V2/data_tools/sample/"
+    base_dir = "/fs-computility/ai4agr/lijinzhe/code/BioMLLM_V2/data_tools/sample"
     files = [
-        "/fs-computility/ai4agr/lijinzhe/code/BioMLLM_V2/data_tools/sample/balanced_dna_rna_val_dataset.jsonl",
+        "balanced_dna_rna_val_dataset.jsonl"
     ]
-    out_path = f"{base_dir}/stage3_train_nt_dna_rna.parquet"
+    out_path = f"{base_dir}/val_nt_dna_rna.parquet"
 
     merge_biomarkers_to_parquet(
         base_dir,
