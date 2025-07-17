@@ -362,7 +362,7 @@ class MultiModalInfer:
                 with torch.no_grad():
                     outputs = self.model.generate(
                         input_ids=input_ids,
-                        dna_ids_lists=dna_ids_lists,
+                        dna_ids_list=dna_ids_lists,
                         attention_mask=attention_mask,
                         max_length=args.max_length,
                         temperature=args.temperature,
