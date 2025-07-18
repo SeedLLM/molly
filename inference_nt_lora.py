@@ -277,9 +277,6 @@ class MultiModalInfer:
                     'kind': batch['raw_kind'][i],  # Get the kind for the i-th sample
                 }
 
-                # Print the sample data for debugging
-                print(sample_data)  # Check the content before writing to the file
-
                 # Write the sample data to the JSON file
                 json.dump(sample_data, json_file, ensure_ascii=False)
                 json_file.write("\n")  # Add a newline for better separation between records
