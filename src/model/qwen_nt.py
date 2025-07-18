@@ -92,7 +92,7 @@ class QwenWithNt(nn.Module):
             output_hidden_states=True,
             return_dict=True
         )
-        dna_embeddings = dna_outputs.last_hidden_state  # 形状：[N_dna, L_dna, H_bio]
+        dna_embeddings = dna_outputs['hidden_states'][-1] # 形状：[N_dna, L_dna, H_bio]
 
         # 映射到主模型的 embedding 空间：[N_dna, L_dna, H_text]
         proj_embeddings = self.multimodal_projector(dna_embeddings)
@@ -175,9 +175,9 @@ class QwenWithNt(nn.Module):
     def generate(
         self,
         input_ids: torch.LongTensor,
-        dna_ids_lists: List[List[torch.LongTensor]],
-        dna_start_pos_lists: Optional[List[List[int]]] = None,
         attention_mask: Optional[torch.LongTensor] = None,
+        omic_ids: Optional[List[List[torch.LongTensor]]] = None,
+        omic_start_pos_list: Optional[List[List[int]]] = None,
         max_length: Optional[int] = None,
         min_length: Optional[int] = None,
         do_sample: bool = True,
@@ -189,38 +189,34 @@ class QwenWithNt(nn.Module):
         **generate_kwargs
     ) -> torch.LongTensor:
         
-
-
-        device = input_ids.device
-        # Get embeddings
+        if torch.distributed.is_initialized() and torch.distributed.get_world_size() > 1:
+            use_cache = False
+    
         hidden_states = self.model.get_input_embeddings()(input_ids)
 
-        # Auto-infer DNA start positions if not provided
-        if dna_ids_lists is not None:
-            if dna_start_pos_lists is None:
-                dna_start_pos_lists = []
+        if omic_ids is not None:
+            if omic_start_pos_list is None:
+                omic_start_pos_list = []
                 for ids in input_ids:
                     positions = (ids == self.dna_start_token_id).nonzero(as_tuple=True)[0].tolist()
-                    dna_start_pos_lists.append(positions)
+                    omic_start_pos_list.append(positions)
 
-            for i in range(len(dna_ids_lists)):
-                assert len(dna_ids_lists[i]) == len(dna_start_pos_lists[i]), \
+            # Sanity check
+            for i in range(len(omic_ids)):
+                assert len(omic_ids[i]) == len(omic_start_pos_list[i]), \
                     f"Mismatch in DNA count vs start_pos count at index {i}"
 
             hidden_states = self.process_dna_sequences(
                 hidden_states,
-                dna_ids_lists,
-                dna_start_pos_lists,
-                device
+                omic_ids,
+                omic_start_pos_list,
+                input_ids.device
             )
-
-        if attention_mask is None:
-            attention_mask = torch.ones_like(input_ids, device=device)
 
         output_ids = self.model.generate(
             inputs_embeds=hidden_states,
             attention_mask=attention_mask,
-            max_length=max_length or 2048,
+            max_length=2048,
             min_length=min_length or 0,
             do_sample=do_sample,
             temperature=temperature,

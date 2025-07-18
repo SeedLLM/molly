@@ -11,7 +11,6 @@ import logging
 import traceback
 import sys
 import math
-from dataclasses import dataclass
 
 import swanlab
 import torch
@@ -22,23 +21,10 @@ import deepspeed
 from src.trainer import MultimodalTrainer
 from src.model import QwenWithBert, get_qwen_bert_config
 from src.dataset import load_dataloder
-# 导入DNARNADataset
-from src.dataset.dna_rna_dataset import DNARNADataset, qwen_dna_collate_fn
+from src.dataset.dna_rna_dataset import DNARNADataset, qwen_dna_collate_fn, DatasetConfig
 from src.utils import print_rank_0, refresh_config, set_up_trainable_param, init_swanlab_rank_0, swanlab_log_rank_0, pre_train_lora
 
 from src.model import QwenWithNt, get_qwen_nt_config, EsmConfig, EsmModel
-
-
-@dataclass
-class DatasetConfig:
-    """DNARNADataset所需的配置类"""
-    max_len: int = 1024
-    max_src_len: int = 1024
-    mode: str = 'sft'
-    cal_metric_pos: int = None
-    padding: bool = True
-    input_field: str = 'input'
-    output_field: str = 'output'
 
 
 def setup_tokenizers(args):

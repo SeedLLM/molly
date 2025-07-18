@@ -1,18 +1,18 @@
 enable_list="multimodal model.model.embed_tokens model.model.layers model.lm_head"
-experiment_name="Qwen3_1.7B_NT_sft_exp1_0715"
+experiment_name="Qwen3_4B_NT_sft_exp1_0718"
 output_path="/fs-computility/ai4agr/lijinzhe/res_data_model/biomllm_res/${experiment_name}"
 tb_log_dir="/fs-computility/ai4agr/mazhe/BioMLLM_V2/tensorboard/${experiment_name}"
 
 options="--experiment-name $experiment_name \
 --use-lora \
---text-model-path /tos-bjml-ai4agr/lijinzhe/BioMLLM/Qwen3-1.7B \
+--text-model-path /tos-bjml-ai4agr/lijinzhe/BioMLLM/Qwen3-4B \
 --bio-model-path /tos-bjml-ai4agr/lijinzhe/BioModel/nucleotide-transformer/  \
 --multimodal-k-tokens 128 \
 --device cuda \
 --load-pretrained \
 --freeze-nt \
---train-dataset-path /tos-bjml-ai4agr/lijinzhe/dataset/BioMLLM/stage3_train_data/stage3_train_nt.parquet \
---eval-dataset-path /tos-bjml-ai4agr/lijinzhe/dataset/BioMLLM/stage3_train_data/val_nt.parquet \
+--train-dataset-path /tos-bjml-ai4agr/lijinzhe/dataset/BioMLLM/stage3_train_data/stage3_train_nt_dna_rna.parquet \
+--eval-dataset-path /tos-bjml-ai4agr/lijinzhe/dataset/BioMLLM/stage3_train_data/val_nt_dna_rna.parquet \
 --max-len 1024 \
 --max-src-len 1024 \
 --eval-max-len 1024 \
@@ -27,7 +27,7 @@ options="--experiment-name $experiment_name \
 --ds-config-path /fs-computility/ai4agr/lijinzhe/code/BioMLLM_V2/zero2_config.json \
 --enable-list $enable_list \
 --output-path $output_path \
---save-interval 500 \
+--save-interval 1000 \
 --eval-interval 100 \
 --show_avg_loss_step 20 \
 --save_trainable False \

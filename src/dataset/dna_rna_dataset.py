@@ -8,7 +8,21 @@ from torch.utils.data import Dataset
 from tqdm import tqdm
 from multiprocessing import Pool
 from functools import partial
+from dataclasses import dataclass
 
+
+@dataclass
+class DatasetConfig:
+    """DNARNADataset所需的配置类"""
+    max_len: int = 1024
+    max_src_len: int = 1024
+    mode: str = 'sft'
+    cal_metric_pos: int = None
+    padding: bool = True
+    input_field: str = 'input'
+    output_field: str = 'output'
+    multimodal_k_tokens: int = 128
+    type: str = None
 
 class DNARNADataset(Dataset):
     """Dataset for DNA/RNA data from Parquet, formatted for Bio-LLM."""
@@ -23,6 +37,7 @@ class DNARNADataset(Dataset):
         shuffle=False,
         seed=42,
         num_workers=4,
+        type=None,
         **kwargs
     ):
         """
@@ -46,7 +61,6 @@ class DNARNADataset(Dataset):
         self.tokenizer = tokenizer
         self.dna_tokenizer = multimodal_tokenizer
         self.dataset_config = dataset_config
-        self.project_token_num = kwargs.get("multimodal_k_tokens", 32)
         self.shuffle = shuffle
         self.seed = seed
         self.num_workers = num_workers
@@ -54,9 +68,11 @@ class DNARNADataset(Dataset):
         # Configuration parameters
         self.max_len = dataset_config.max_len
         self.max_src_len = dataset_config.max_src_len
+        self.project_token_num = dataset_config.multimodal_k_tokens
         self.mode = dataset_config.mode
         self.cal_metric_pos = dataset_config.cal_metric_pos
         self.padding = dataset_config.padding
+        self.dataset_type = type
 
         # Special tokens
         self._pretokenize_special_tokens()
@@ -187,7 +203,7 @@ class DNARNADataset(Dataset):
         omic_start_pos_list = []
 
         start = 0
-        # encode 非序列部分，並記錄序列起始位置
+        # encode 非序列部分，并记录序列起始位置
         for info in sorted(seq_info, key=lambda x: x["start"], reverse=False):
             seq_type = info["type"]
             s, e = info["start"], info["end"]
@@ -222,17 +238,30 @@ class DNARNADataset(Dataset):
             encoded_seq = self._encode_sequence(seq, seq_type)
             omic_ids_list.append(encoded_seq)
 
-        
-        return {
-            "input_ids": input_ids,
-            "output_ids": output_ids,
-            "reasoning_token_ids": reasoning_ids,
-            "omic_ids_list": omic_ids_list,
-            "omic_start_pos_list": omic_start_pos_list,
-            "task": sample.get("task", ""),
-            "kind": kinds_string,
-            "label": sample.get("label", "")
-        }
+        if self.dataset_type == 'inference':
+            return {
+                "input_ids": input_ids,
+                "output_ids": output_ids,
+                "reasoning_token_ids": reasoning_ids,
+                "omic_ids_list": omic_ids_list,
+                "omic_start_pos_list": omic_start_pos_list,
+                "task": sample.get("task", ""),
+                "kind": kinds_string,
+                "label": sample.get("label", ""),
+                "raw_input": input_text,
+                "raw_output": output_text,
+            }
+        else:
+            return {
+                "input_ids": input_ids,
+                "output_ids": output_ids,
+                "reasoning_token_ids": reasoning_ids,
+                "omic_ids_list": omic_ids_list,
+                "omic_start_pos_list": omic_start_pos_list,
+                "task": sample.get("task", ""),
+                "kind": kinds_string,
+                "label": sample.get("label", "")
+            }
 
     
     def process_sample(self, sample: Dict[str, Any]) -> Dict[str, torch.Tensor]:
@@ -282,16 +311,29 @@ class DNARNADataset(Dataset):
             input_ids.extend([self.pad_id] * pad_len)
             labels.extend([-100] * pad_len)
             attention_mask.extend([0] * pad_len)
-
         # Convert to tensors
-        return {
-            "input_ids": torch.LongTensor(input_ids),
-            "omic_ids": torch.stack(sample["omic_ids_list"]),
-            "omic_start_pos_list": sample["omic_start_pos_list"],
-            "labels": torch.LongTensor(labels),
-            "attention_mask": torch.LongTensor(attention_mask),
-            "cal_metric_pos": cal_metric_pos,
-        }
+        if self.dataset_type == 'inference':
+            return {
+                "input_ids": torch.LongTensor(input_ids),
+                "omic_ids": torch.stack(sample["omic_ids_list"]),
+                "omic_start_pos_list": sample["omic_start_pos_list"],
+                "labels": torch.LongTensor(labels),
+                "attention_mask": torch.LongTensor(attention_mask),
+                "task": sample["task"],
+                "kind": sample["kind"],
+                "raw_label": sample["label"],
+                "raw_input": sample["raw_input"],
+                "raw_output": sample["raw_output"],
+            }
+        else:
+            return {
+                "input_ids": torch.LongTensor(input_ids),
+                "omic_ids": torch.stack(sample["omic_ids_list"]),
+                "omic_start_pos_list": sample["omic_start_pos_list"],
+                "labels": torch.LongTensor(labels),
+                "attention_mask": torch.LongTensor(attention_mask),
+                "cal_metric_pos": cal_metric_pos,
+            }
     
     def _encode_sequence(self, seq: str, seq_type: str) -> torch.LongTensor:
         """
@@ -330,6 +372,60 @@ def qwen_dna_collate_fn(batch):
     omic_start_pos_lists = [sample.get("omic_start_pos_list", []) for sample in batch]
     omic_counts = [len(omic_start_pos_list) for omic_start_pos_list in omic_start_pos_lists]
     omic_ids = [sample.get("omic_ids", None) for sample in batch]
+      
+    input_ids = torch.nn.utils.rnn.pad_sequence(
+        input_ids, batch_first=True, padding_value=0
+    )
+    labels = torch.nn.utils.rnn.pad_sequence(
+        labels, batch_first=True, padding_value=-100
+    )
+    attention_mask = torch.nn.utils.rnn.pad_sequence(
+        attention_mask, batch_first=True, padding_value=0
+    )
+    omic_ids = torch.nn.utils.rnn.pad_sequence(
+        omic_ids, batch_first=True, padding_value=0
+    ) if omic_ids else None
+    omic_start_pos_lists = torch.nn.utils.rnn.pad_sequence(
+        [torch.tensor(pos) for pos in omic_start_pos_lists],
+        batch_first=True, padding_value=-1
+    ) if omic_start_pos_lists else None
+    
+    return {
+        "input_ids": input_ids,
+        "labels": labels,
+        "attention_mask": attention_mask,
+        "omic_ids": omic_ids,
+        "omic_start_pos_list": omic_start_pos_lists,
+        "omic_counts": omic_counts,
+        "cal_metric_pos": cal_metric_pos,
+    }
+
+def qwen_dna_collate_fn_inference(batch):
+    """
+    Collate function for DataLoader with multimodal DNA batches.
+    Handles variable length DNA sequences and attention masks.
+    
+    Args:
+        batch: List of samples from the dataset
+    
+    Returns:
+        Batched tensors suitable for model input
+    """
+
+    input_ids = [sample["input_ids"] for sample in batch]
+    labels = [sample["labels"] for sample in batch]
+    attention_mask = [sample["attention_mask"] for sample in batch]
+    cal_metric_pos = [sample.get("cal_metric_pos") for sample in batch]
+    omic_start_pos_lists = [sample.get("omic_start_pos_list", []) for sample in batch]
+    omic_counts = [len(omic_start_pos_list) for omic_start_pos_list in omic_start_pos_lists]
+    omic_ids = [sample.get("omic_ids", None) for sample in batch]
+
+    
+    raw_input = [sample.get("raw_input") for sample in batch]
+    raw_output = [sample.get("raw_output") for sample in batch]
+    raw_label = [sample.get("raw_label") for sample in batch]
+    raw_task = [sample.get("task") for sample in batch]
+    raw_kind = [sample.get("kind") for sample in batch]
 
         
     input_ids = torch.nn.utils.rnn.pad_sequence(
@@ -357,6 +453,11 @@ def qwen_dna_collate_fn(batch):
         "omic_start_pos_list": omic_start_pos_lists,
         "omic_counts": omic_counts,
         "cal_metric_pos": cal_metric_pos,
+        "input": raw_input,
+        "raw_output": raw_output,
+        "raw_label": raw_label,
+        "raw_task": raw_task,
+        "raw_kind": raw_kind,
     }
 
 
@@ -398,161 +499,4 @@ def format_parquet_for_bio_llm(example: Dict[str, Any]) -> Dict[str, Any]:
 
 
 if __name__ == "__main__":
-
-    # parquet_path = "/tos-bjml-ai4agr/lijinzhe/dataset/BioMLLM/stage3_train_data/stage3_train_nt.parquet"
-
-    # # Step 1: 加载 parquet 文件为 Hugging Face Dataset
-    # dataset = load_dataset("parquet", data_files=parquet_path)["train"]
-
-    # # Step 2: 映射到标准 DNA-LLM 格式
-    # dataset = dataset.map(format_parquet_for_bio_llm)
-
-    # # Step 3: 打印一条样本进行检查
-    # print(dataset[2])
-    import sys
-    import torch
-    from transformers import AutoTokenizer
-    import argparse
-    from dataclasses import dataclass
-    from pathlib import Path
-    
-    # Simple config class for testing
-    @dataclass
-    class TestConfig:
-        max_len: int = 1024
-        max_src_len: int = 1024
-        mode: str = 'sft'
-        cal_metric_pos: int = None
-        padding: bool = True
-        input_field: str = 'input'
-        output_field: str = 'output'
-    
-    def run_test_dataset():
-        """Full test case for the DNA/RNA dataset"""
-        # Parse arguments
-        parser = argparse.ArgumentParser(description="Test DNA/RNA Dataset")
-        parser.add_argument("--parquet_path", type=str, 
-                            default="/tos-bjml-ai4agr/lijinzhe/dataset/BioMLLM/stage3_train_data/val_nt_dna_rna.parquet")
-        parser.add_argument("--text_model_path", type=str, default="/tos-bjml-ai4agr/lijinzhe/BioMLLM/Qwen3-4B")
-        parser.add_argument("--bio_model_path", type=str, default="/tos-bjml-ai4agr/lijinzhe/BioModel/nucleotide-transformer/")
-        parser.add_argument("--num_samples", type=int, default=20, help="Number of samples to test")
-        args = parser.parse_args()
-        
-        # Check if files exist
-        parquet_path = Path(args.parquet_path)
-        if not parquet_path.exists():
-            print(f"Error: Parquet file not found at {parquet_path}")
-            sys.exit(1)
-        
-        print(f"Loading tokenizers from {args.text_model_path} and {args.bio_model_path}")
-        
-        try:
-            # Load tokenizers
-            text_tokenizer = AutoTokenizer.from_pretrained(args.text_model_path, trust_remote_code=True)
-            dna_tokenizer = AutoTokenizer.from_pretrained(args.bio_model_path, trust_remote_code=True)
-            
-            # Add DNA and RNA special tokens to text tokenizer
-            special_tokens = [
-                "<|dna_start|>", "<|dna_pad|>", "<|dna_end|>",
-                "<|rna_start|>", "<|rna_pad|>", "<|rna_end|>"
-            ]
-            text_tokenizer.add_special_tokens({"additional_special_tokens": special_tokens})
-            
-            # Create test config
-            config = TestConfig()
-            
-            # Create dataset
-            print(f"Creating dataset from {parquet_path}")
-            dataset = DNARNADataset(
-                args.parquet_path,
-                text_tokenizer,
-                config,
-                multimodal_tokenizer=dna_tokenizer,
-                read_nums=None
-            )
-            
-            # Print dataset info
-            print(f"\n{'='*50}")
-            print(f"Dataset loaded with {len(dataset)} samples")
-            print(f"{'='*50}\n")
-            
-            # Test individual sample processing
-            sample_idx = 5000
-            raw_sample = dataset.data[sample_idx]
-            processed_sample = dataset[sample_idx]
-            
-            # print(f"Sample {sample_idx} raw data:")
-            # print(f"- Input: {raw_sample['input'][:100]}...")
-            # print(f"- Output: {raw_sample['output'][:100]}...")
-            # print(f"- Sequences: {len(raw_sample['sequence_data'])} sequences")
-            # for i, seq_data in enumerate(raw_sample['sequence_data']):
-            #     print(f"  - Seq {i+1}: {seq_data['type']} - {seq_data['sequence'][:30]}...")
-            
-            print(f"\nProcessed sample:")
-            print(f"- Input IDs shape: {processed_sample['input_ids'].shape}")
-            print(f"- Labels shape: {processed_sample['labels'].shape}")
-            print(f"- Attention mask shape: {processed_sample['attention_mask'].shape}")
-            
-            if processed_sample['dna_ids_list'] is not None:
-                print(f"- DNA sequences: {len(processed_sample['dna_ids_list'])}")
-                for i, seq in enumerate(processed_sample['dna_ids_list']):
-                    print(f"  - Seq {i+1} shape: {seq.shape}")
-            
-            # Test dataloader
-            print(f"\n{'='*50}")
-            print(f"Testing DataLoader with batch size 2")
-            print(f"{'='*50}\n")
-            
-            dataloader = torch.utils.data.DataLoader(
-                dataset, 
-                batch_size=2, 
-                collate_fn=qwen_dna_collate_fn
-            )
-            
-            batch = next(iter(dataloader))
-            print(f"Batch keys: {batch.keys()}")
-            print(f"- input_ids shape: {batch['input_ids'].shape}")
-            print(f"- labels shape: {batch['labels'].shape}")
-            print(f"- attention_mask shape: {batch['attention_mask'].shape}")
-            
-            if 'dna_ids_list' in batch:
-                print(f"- DNA sequences in batch: {len(batch['dna_ids_list'])}")
-                print(f"- DNA counts per sample: {batch['dna_counts']}")
-                
-            # Decode a sample to verify
-            print(f"\n{'='*50}")
-            print(f"Decoding first sample in batch")
-            print(f"{'='*50}\n")
-            
-            # Get the first sample from the batch
-            sample_input_ids = batch['input_ids'][1]
-            
-            # Decode tokens and print
-            decoded_text = text_tokenizer.decode(sample_input_ids)
-            print(f"Decoded text: {decoded_text}")
-            
-            print(f"\n{'='*50}")
-            print("Test completed successfully!")
-            print(f"{'='*50}")
-            
-        except Exception as e:
-            import traceback
-            print(f"Error during testing: {str(e)}")
-            traceback.print_exc()
-            sys.exit(1)
-    
-    # Run the test
-    if len(sys.argv) > 1 and sys.argv[1] == "--huggingface":
-        # Import for HuggingFace dataset testing
-        from datasets import load_dataset
-        
-        parquet_path = "/tos-bjml-ai4agr/lijinzhe/dataset/BioMLLM/stage3_train_data/val_nt_dna_rna.parquet"
-        # Step 1: 加载 parquet 文件为 Hugging Face Dataset
-        dataset = load_dataset("parquet", data_files=parquet_path)["train"]
-        # Step 2: 映射到标准 DNA-LLM 格式
-        dataset = dataset.map(format_parquet_for_bio_llm)
-        # Step 3: 打印一条样本进行检查
-        print(dataset[2])
-    else:
-        # Run the full test
-        run_test_dataset()
+    pass
