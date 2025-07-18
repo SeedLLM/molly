@@ -79,8 +79,7 @@ def get_qwen_nt_config(text_model_path, bio_model_path):
     """
     # Load base configurations
     text_config = AutoConfig.from_pretrained(text_model_path, trust_remote_code=True)
-    bio_config = EsmConfig.from_pretrained(bio_model_path, trust_remote_code=True)
-    # bio_config = AutoConfig.from_pretrained(bio_model_path, trust_remote_code=True)
+    bio_config = AutoConfig.from_pretrained(bio_model_path, trust_remote_code=True)
 
     # Create multimodal configuration
     config = MultimodalConfig(

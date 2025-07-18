@@ -4,7 +4,7 @@ from typing import Optional, List, Dict, Union, Tuple
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from transformers import AutoTokenizer, AutoModelForCausalLM, AutoModel, Qwen3ForCausalLM, AutoConfig
+from transformers import AutoTokenizer, AutoModelForCausalLM, AutoModel, AutoModelForMaskedLM
 from transformers.modeling_outputs import CausalLMOutputWithPast
 
 
@@ -24,7 +24,7 @@ class QwenWithNt(nn.Module):
         self.bio_config = config.bio_config
         self.model = AutoModelForCausalLM.from_config(self.text_config)
 
-        self.bio_model = AutoModel.from_config(self.bio_config)
+        self.bio_model = AutoModelForMaskedLM.from_config(self.bio_config, trust_remote_code=True)
         self.multimodal_projector = nn.Sequential(
             nn.Linear(self.bio_config.hidden_size, self.text_config.hidden_size * 2),
             nn.GELU(),
@@ -43,6 +43,9 @@ class QwenWithNt(nn.Module):
         self.dna_start_token_id = tokenizer.convert_tokens_to_ids("<|dna_start|>")
         self.dna_end_token_id = tokenizer.convert_tokens_to_ids("<|dna_end|>")
         self.dna_pad_token_id = tokenizer.convert_tokens_to_ids("<|dna_pad|>")
+        self.rna_start_token_id = tokenizer.convert_tokens_to_ids("<|rna_start|>")
+        self.rna_end_token_id = tokenizer.convert_tokens_to_ids("<|rna_end|>")
+        self.rna_pad_token_id = tokenizer.convert_tokens_to_ids("<|rna_pad|>")
 
     def process_dna_sequences(
         self,
@@ -52,8 +55,6 @@ class QwenWithNt(nn.Module):
         device: torch.device
     ) -> torch.Tensor:
         """
-        将 DNA 序列嵌入注入到 hidden_states 中对应的 <|dna_start|> 位置之后。
-
         参数：
             hidden_states: 原始 token embedding，形状 [B, L, D]
             dna_ids_list: 每个样本包含若干个 DNA 序列的 token ids，List[List[Tensor]]
