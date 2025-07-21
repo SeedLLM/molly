@@ -119,7 +119,6 @@ class MultimodalTrainer(Trainer):
                  callbacks=None,
                  optimizers=(None, None),
                  preprocess_logits_for_metrics=None,
-                 tensorboard_writer=None,  # Add tensorboard writer parameter
                  **kwargs):
         """
         初始化MultimodalTrainer
@@ -136,16 +135,12 @@ class MultimodalTrainer(Trainer):
             callbacks: 回调函数列表
             optimizers: 优化器和调度器元组
             preprocess_logits_for_metrics: 预处理logits的函数
-            tensorboard_writer: TensorBoard SummaryWriter实例
         """
         # 提取自定义参数
         self.custom_args = kwargs.pop('custom_args', args)
         
         # 保存tokenizer作为属性以保持向后兼容
         self.tokenizer = tokenizer
-        
-        # 保存tensorboard writer
-        self.tensorboard_writer = tensorboard_writer
         
         # 设置早停参数
         self.best_metric = float('-inf')
@@ -374,32 +369,6 @@ class MultimodalTrainer(Trainer):
                     print_rank_0(f"Warning: Could not convert {v} to float for metric {k}")
                     continue
             
-            # Log to tensorboard if configured
-            if self.tensorboard_writer is not None and step is not None:
-                try:
-                    # 确保只在主进程中记录tensorboard日志
-                    is_rank_0 = True
-                    if deepspeed.comm.is_initialized():
-                        is_rank_0 = deepspeed.comm.get_rank() == 0
-                    
-                    if is_rank_0:
-                        for metric_name, metric_value in filtered_metrics.items():
-                            self.tensorboard_writer.add_scalar(f"{split}/{metric_name}", metric_value, step)
-                        
-                        # 记录学习率
-                        if 'learning_rate' in metrics and split == 'train':
-                            self.tensorboard_writer.add_scalar(f"{split}/learning_rate", metrics['learning_rate'], step)
-                        
-                        # 记录梯度范数
-                        if 'grad_norm' in metrics and split == 'train':
-                            self.tensorboard_writer.add_scalar(f"{split}/grad_norm", metrics['grad_norm'], step)
-                        
-                        # 强制刷新
-                        self.tensorboard_writer.flush()
-                        
-                except Exception as e:
-                    print_rank_0(f"Error logging to TensorBoard: {str(e)}")
-            
             # Log to swanlab if configured
             if getattr(self.custom_args, 'swanlab', False):
                 # 确保在所有进程中只有 rank 0 记录日志
@@ -411,6 +380,10 @@ class MultimodalTrainer(Trainer):
                     try:
                         import swanlab
                         swanlab.log(filtered_metrics, step)
+                        if 'learning_rate' in filtered_metrics:
+                            swanlab.log({'learning_rate': filtered_metrics['learning_rate']}, step)
+                        if 'grad_norm' in filtered_metrics:
+                            swanlab.log({'grad_norm': filtered_metrics['grad_norm']}, step)
                         print_rank_0(f"SwanLab logged metrics at step {step}: {list(filtered_metrics.keys())}")
                     except Exception as e:
                         print_rank_0(f"Error logging to SwanLab: {str(e)}")
@@ -611,34 +584,8 @@ class MultimodalTrainer(Trainer):
         # 使用父类的training_step方法，确保传递num_items_in_batch参数
         loss = super().training_step(model, inputs, num_items_in_batch=num_items_in_batch)
         
-        # 记录训练损失到 TensorBoard
-        if self.tensorboard_writer is not None:
-            is_rank_0 = True
-            if deepspeed.comm.is_initialized():
-                is_rank_0 = deepspeed.comm.get_rank() == 0
-            
-            if is_rank_0:
-                try:
-                    train_loss = loss.item() if isinstance(loss, torch.Tensor) else loss
-                    self.tensorboard_writer.add_scalar('train/step_loss', train_loss, self.state.global_step)
-                    
-                    # 记录学习率
-                    if hasattr(self, 'lr_scheduler') and self.lr_scheduler:
-                        current_lr = self.lr_scheduler.get_last_lr()[0]
-                        self.tensorboard_writer.add_scalar('train/learning_rate', current_lr, self.state.global_step)
-                    
-                    # 记录梯度范数
-                    grad_norm = self._maybe_get_grad_norm()
-                    if grad_norm is not None:
-                        self.tensorboard_writer.add_scalar('train/grad_norm', grad_norm, self.state.global_step)
-                    
-                    # 强制刷新
-                    self.tensorboard_writer.flush()
-                    
-                except Exception as e:
-                    print_rank_0(f"Error logging training step to TensorBoard: {str(e)}")
         
-        # 始终记录训练损失到 SwanLab - 添加此代码以确保每步都记录
+        # 始终记录训练损失到 SwanLab
         if hasattr(self, 'custom_args') and getattr(self.custom_args, 'swanlab', False):
             is_rank_0 = True
             if deepspeed.comm.is_initialized():
@@ -736,13 +683,11 @@ class MultimodalTrainer(Trainer):
         
         # 执行评估
         try:
-            # 使用tqdm创建进度条
             num_examples = 0
             total_loss = 0
             num_batches = 0
             num_data = 0
             
-            # 确定总长度用于进度条
             total_eval_samples = None
             
             read_nums = getattr(self.custom_args, 'eval_read_nums', 100)
@@ -766,10 +711,11 @@ class MultimodalTrainer(Trainer):
                 all_labels = []
             
             # 逐批次处理
-            for step, inputs in enumerate(dataloader):
+            for _, inputs in enumerate(dataloader):
                 # 准备输入
                 inputs = self._prepare_inputs(inputs)
-                num_data += inputs["input_ids"].size(0)
+                batch_size = inputs["input_ids"].size(0)
+                num_data += batch_size
                 
                 # 禁用梯度计算
                 with torch.no_grad():
@@ -801,7 +747,8 @@ class MultimodalTrainer(Trainer):
             pbar.close()
             
             # 计算平均损失
-            eval_loss = total_loss / max(1, num_batches)
+            eval_loss = total_loss / max(1, num_batches) / batch_size
+
             
             # 计算其他指标
             metrics = {}
@@ -825,7 +772,7 @@ class MultimodalTrainer(Trainer):
             # 添加前缀
             metrics = {f"{metric_key_prefix}_{k}" if not k.startswith(metric_key_prefix) else k: v for k, v in metrics.items()}
             
-            # 直接记录到swanlab
+            # 评估完成后记录到swanlab
             if hasattr(self, 'custom_args') and getattr(self.custom_args, 'swanlab', False):
                 is_rank_0 = True
                 if deepspeed.comm.is_initialized():
@@ -842,29 +789,6 @@ class MultimodalTrainer(Trainer):
                     except Exception as e:
                         print_rank_0(f"评估循环中记录到SwanLab时出错: {str(e)}")
             
-            # 在评估完成后记录到tensorboard
-            if self.tensorboard_writer is not None:
-                is_rank_0 = True
-                if deepspeed.comm.is_initialized():
-                    is_rank_0 = deepspeed.comm.get_rank() == 0
-                
-                if is_rank_0:
-                    try:
-                        # 记录评估损失
-                        if 'loss' in metrics:
-                            self.tensorboard_writer.add_scalar('eval/loss', metrics['loss'], self.state.global_step)
-                        
-                        # 记录其他评估指标
-                        for metric_name, metric_value in metrics.items():
-                            if metric_name != 'loss':  # 避免重复记录loss
-                                self.tensorboard_writer.add_scalar(f'eval/{metric_name}', metric_value, self.state.global_step)
-                        
-                        # 强制刷新
-                        self.tensorboard_writer.flush()
-                        
-                    except Exception as e:
-                        print_rank_0(f"Error logging evaluation metrics to TensorBoard: {str(e)}")
-            
             # 创建输出对象
             output = EvalOutput(metrics=metrics, num_samples=num_examples)
             
@@ -873,4 +797,4 @@ class MultimodalTrainer(Trainer):
         finally:
             # 恢复原始forward方法
             if self.model is not None and hasattr(self.model, 'forward') and 'original_forward' in locals():
-                self.model.forward = original_forward 
+                self.model.forward = original_forward

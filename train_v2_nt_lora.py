@@ -206,10 +206,6 @@ def main():
     # Logo info
     parser.add_argument('--experiment-name', type=str, default='Qwen_NT_sft_exp_',
                        help='Experiment name for logging and checkpoints')
-    parser.add_argument('--tensorboard', action='store_true',
-                       help='Enable tensorboard logging')
-    parser.add_argument('--tb-log-dir', type=str, default='./logs',
-                       help='Tensorboard log directory')
     parser.add_argument('--swanlab', action='store_true',
                        help='Enable swanlab logging')
     parser.add_argument('--swanlab-team', type=str, default=None,
@@ -360,13 +356,6 @@ def main():
             if args.swanlab:
                 # 使用专门的函数初始化SwanLab，确保只在rank 0执行
                 init_swanlab_rank_0(args, experiment_suffix=current_time)
-            elif args.tensorboard:
-                from torch.utils.tensorboard import SummaryWriter
-                log_dir = os.path.join(args.tb_log_dir, args.experiment_name + current_time)
-                os.makedirs(log_dir, exist_ok=True)
-                writer = SummaryWriter(log_dir=log_dir)
-                print_rank_0(f"TensorBoard logging enabled. Logs will be saved to: {log_dir}")
-                print_rank_0(f"To view logs, run: tensorboard --logdir={log_dir}")
         
         # Setup tokenizers
         tokenizer, dna_tokenizer = setup_tokenizers(args)
@@ -396,9 +385,7 @@ def main():
             print_rank_0(f"Batch size: {args.batch_size_per_gpu}")
             print_rank_0(f"Learning rate: {args.lr}")
             print_rank_0(f"Dataset: {args.train_dataset_path}")
-            if args.tensorboard:
-                print_rank_0(f"TensorBoard logging: Enabled")
-            elif args.swanlab:
+            if args.swanlab:
                 print_rank_0(f"SwanLab logging: Enabled")
         
         # Initialize the MultimodalTrainer
@@ -409,8 +396,7 @@ def main():
                 train_dataset=train_dataset,
                 eval_dataset=eval_dataset,
                 tokenizer=tokenizer,
-                data_collator=data_collator,
-                tensorboard_writer=writer,  # Pass tensorboard writer to trainer
+                data_collator=data_collator
             )
             
             # Start training
