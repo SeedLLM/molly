@@ -15,7 +15,7 @@ import math
 import swanlab
 import torch
 import torch.distributed as dist
-from transformers import AutoTokenizer, AutoModelForCausalLM
+from transformers import AutoTokenizer, AutoModelForCausalLM, AutoModelForMaskedLM
 import deepspeed
 
 from src.trainer import MultimodalTrainer
@@ -24,7 +24,7 @@ from src.dataset import load_dataloder
 from src.dataset.dna_rna_dataset import DNARNADataset, qwen_dna_collate_fn, DatasetConfig
 from src.utils import print_rank_0, refresh_config, set_up_trainable_param, init_swanlab_rank_0, swanlab_log_rank_0, pre_train_lora
 
-from src.model import QwenWithNt, get_qwen_nt_config, EsmConfig, EsmModel
+from src.model import QwenWithNt, get_qwen_nt_config
 
 
 def setup_tokenizers(args):
@@ -68,34 +68,14 @@ def setup_model_and_optimizer(args, tokenizer):
             torch_dtype=torch.bfloat16
         )
         model.model.load_state_dict(qwen_model.state_dict())
-        del qwen_model  # Free memory
+        del qwen_model
 
-        # Load NT model parameters
         print(f"Loading NT model from {args.bio_model_path}")
-        
-        # 加载DNA模型配置
-        from src.model.esm_config import EsmConfig
-        from src.model.modeling_esm import EsmModel
-        
-        # 直接从预训练模型加载配置，确保与预训练模型完全一致
-        bio_config = EsmConfig.from_pretrained(args.bio_model_path)
-        
-        # 更新模型配置中的bio_config
-        model_config.bio_config = bio_config
-        
-        # 重新创建bio_model部分，使用正确的配置
-        model.bio_model = EsmModel(bio_config)
-        
-        # 加载预训练权重
-        print(f"Loading NT model from {args.bio_model_path}")
-        dna_model = EsmModel.from_pretrained(
-            args.bio_model_path,
-            config=bio_config
-        )
+        bio_model = AutoModelForMaskedLM.from_pretrained(args.bio_model_path, trust_remote_code=True)
         
         # 加载权重时，strict=False以跳过不匹配的部分
-        model.bio_model.load_state_dict(dna_model.state_dict(), strict=False)
-        del dna_model  # Free memory
+        model.bio_model.load_state_dict(bio_model.state_dict(), strict=True)
+        del bio_model
         
         print("Base models loaded successfully")
 
