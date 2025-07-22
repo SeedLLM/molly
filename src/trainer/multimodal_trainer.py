@@ -66,51 +66,6 @@ class EarlyStoppingCallback(TrainerCallback):
                 print_rank_0(f"Early stopping triggered after {self.patience_counter} evaluations without improvement")
                 control.should_training_stop = True
 
-class GradientNormCallback(TrainerCallback):
-    """
-    梯度范数记录回调，用于在梯度裁剪前后记录梯度信息
-    """
-    def __init__(self):
-        self.grad_norms = []
-        
-    def on_step_begin(self, args, state, control, **kwargs):
-        """在训练步骤开始时重置梯度范数记录"""
-        self.grad_norms = []
-        
-    def on_after_backward(self, args, state, control, model, **kwargs):
-        """在反向传播后、梯度裁剪前记录原始梯度范数"""
-        # 计算所有参数的梯度范数
-        total_norm = 0.0
-        parameters = [p for p in model.parameters() if p.grad is not None]
-        for p in parameters:
-            param_norm = p.grad.detach().data.norm(2)
-            total_norm += param_norm.item() ** 2
-        total_norm = total_norm ** 0.5
-        
-        # 记录原始梯度范数
-        self.grad_norms.append(("pre_clip", total_norm))
-        
-    def on_after_clip_grad(self, args, state, control, model, **kwargs):
-        """在梯度裁剪后记录裁剪后的梯度范数"""
-        # 计算所有参数的梯度范数
-        total_norm = 0.0
-        parameters = [p for p in model.parameters() if p.grad is not None]
-        for p in parameters:
-            param_norm = p.grad.detach().data.norm(2)
-            total_norm += param_norm.item() ** 2
-        total_norm = total_norm ** 0.5
-        
-        # 记录裁剪后的梯度范数
-        self.grad_norms.append(("post_clip", total_norm))
-        
-    def on_step_end(self, args, state, control, **kwargs):
-        """在训练步骤结束时提供梯度范数信息"""
-        # 将梯度范数信息存储在state中，以便训练器访问
-        if hasattr(state, "grad_norms"):
-            state.grad_norms = self.grad_norms
-        else:
-            state.grad_norms = self.grad_norms
-
 class IterableDatasetShard(IterableDataset):
     """
     将IterableDataset分片以支持分布式训练
