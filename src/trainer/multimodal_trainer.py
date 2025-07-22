@@ -17,7 +17,7 @@ import torch.amp as amp
 from tqdm import tqdm
 import deepspeed
 
-from ..utils.tools import print_rank_0, swanlab_log_rank_0
+from ..utils.tools import print_rank_0
 
 class EarlyStoppingCallback(TrainerCallback):
     """
@@ -65,6 +65,51 @@ class EarlyStoppingCallback(TrainerCallback):
             if self.patience_counter >= self.patience:
                 print_rank_0(f"Early stopping triggered after {self.patience_counter} evaluations without improvement")
                 control.should_training_stop = True
+
+class GradientNormCallback(TrainerCallback):
+    """
+    梯度范数记录回调，用于在梯度裁剪前后记录梯度信息
+    """
+    def __init__(self):
+        self.grad_norms = []
+        
+    def on_step_begin(self, args, state, control, **kwargs):
+        """在训练步骤开始时重置梯度范数记录"""
+        self.grad_norms = []
+        
+    def on_after_backward(self, args, state, control, model, **kwargs):
+        """在反向传播后、梯度裁剪前记录原始梯度范数"""
+        # 计算所有参数的梯度范数
+        total_norm = 0.0
+        parameters = [p for p in model.parameters() if p.grad is not None]
+        for p in parameters:
+            param_norm = p.grad.detach().data.norm(2)
+            total_norm += param_norm.item() ** 2
+        total_norm = total_norm ** 0.5
+        
+        # 记录原始梯度范数
+        self.grad_norms.append(("pre_clip", total_norm))
+        
+    def on_after_clip_grad(self, args, state, control, model, **kwargs):
+        """在梯度裁剪后记录裁剪后的梯度范数"""
+        # 计算所有参数的梯度范数
+        total_norm = 0.0
+        parameters = [p for p in model.parameters() if p.grad is not None]
+        for p in parameters:
+            param_norm = p.grad.detach().data.norm(2)
+            total_norm += param_norm.item() ** 2
+        total_norm = total_norm ** 0.5
+        
+        # 记录裁剪后的梯度范数
+        self.grad_norms.append(("post_clip", total_norm))
+        
+    def on_step_end(self, args, state, control, **kwargs):
+        """在训练步骤结束时提供梯度范数信息"""
+        # 将梯度范数信息存储在state中，以便训练器访问
+        if hasattr(state, "grad_norms"):
+            state.grad_norms = self.grad_norms
+        else:
+            state.grad_norms = self.grad_norms
 
 class IterableDatasetShard(IterableDataset):
     """
@@ -116,7 +161,6 @@ class MultimodalTrainer(Trainer):
                  tokenizer=None,
                  model_init=None,
                  compute_metrics=None,
-                 callbacks=None,
                  optimizers=(None, None),
                  preprocess_logits_for_metrics=None,
                  **kwargs):
@@ -132,7 +176,6 @@ class MultimodalTrainer(Trainer):
             tokenizer: 分词器 (已弃用)
             model_init: 模型初始化函数
             compute_metrics: 计算评估指标的函数
-            callbacks: 回调函数列表
             optimizers: 优化器和调度器元组
             preprocess_logits_for_metrics: 预处理logits的函数
         """
@@ -194,7 +237,7 @@ class MultimodalTrainer(Trainer):
                 "load_best_model_at_end": True,
                 "metric_for_best_model": getattr(args, 'metric_for_best_model', "eval_loss"),
                 "greater_is_better": getattr(args, 'greater_is_better', False),
-                "report_to": "none",  # 禁用默认的TensorBoard报告
+                "report_to": getattr(args, 'report_to', "swanlab"),
                 "logging_first_step": True,
                 "seed": getattr(args, 'seed', 42),
                 "dataloader_drop_last": False,
@@ -238,7 +281,7 @@ class MultimodalTrainer(Trainer):
                 training_args = TrainingArguments(output_dir=getattr(args, 'output_path', './output'))
             
             args = training_args
-        
+
         # 初始化父类，使用processing_class替代tokenizer
         super().__init__(
             model=model,
@@ -249,11 +292,12 @@ class MultimodalTrainer(Trainer):
             processing_class=tokenizer,  # 使用新参数名
             model_init=model_init,
             compute_metrics=compute_metrics or self._compute_metrics,
-            callbacks=callbacks or [EarlyStoppingCallback(
+            callbacks=[EarlyStoppingCallback(
                 patience=self.early_stopping_patience,
                 metric_for_best_model=getattr(args, 'metric_for_best_model', 'eval_loss'),
                 greater_is_better=getattr(args, 'greater_is_better', False)
-            )],
+            )
+            ],
             optimizers=optimizers,
             preprocess_logits_for_metrics=preprocess_logits_for_metrics,
             **kwargs  # 传递剩余参数
@@ -322,72 +366,6 @@ class MultimodalTrainer(Trainer):
             pass
             
         return (loss, outputs) if return_outputs else loss
-
-    def log_metrics(self, split, metrics, step=None):
-        """
-        Log metrics to various logging destinations.
-        
-        Args:
-            split: The split name (e.g., "train", "eval")
-            metrics: Dictionary containing metrics
-            step: Current step
-        """
-        # Call parent class method
-        super().log_metrics(split, metrics, step)
-        
-        # Custom logging
-        if hasattr(self, 'custom_args'):
-            # Add prefix to metric names
-            prefixed_metrics = {f"{split}_{k}" if not k.startswith(f"{split}_") else k: v 
-                               for k, v in metrics.items()}
-            
-            # 确保关键指标被记录
-            if 'loss' in metrics and split == 'train':
-                prefixed_metrics['loss'] = metrics['loss']  # 保留无前缀的 loss
-                
-            if 'grad_norm' in metrics and split == 'train':
-                prefixed_metrics['grad_norm'] = metrics['grad_norm']  # 保留无前缀的 grad_norm
-                
-            if 'loss' in metrics and split == 'eval':
-                prefixed_metrics['eval_loss'] = metrics['loss']  # 确保有 eval_loss
-                
-            # Filter invalid metrics
-            filtered_metrics = {}
-            for k, v in prefixed_metrics.items():
-                if v is None:
-                    print_rank_0(f"Warning: Skipping None value for metric {k}")
-                    continue
-                try:
-                    if isinstance(v, (int, float)) and (math.isnan(v) or math.isinf(v)):
-                        print_rank_0(f"Warning: Skipping {v} value for metric {k}")
-                        continue
-                    filtered_metrics[k] = float(v)
-                except (ValueError, TypeError):
-                    print_rank_0(f"Warning: Could not convert {v} to float for metric {k}")
-                    continue
-            
-            # Log to swanlab if configured
-            if getattr(self.custom_args, 'swanlab', False):
-                # 确保在所有进程中只有 rank 0 记录日志
-                is_rank_0 = True
-                if deepspeed.comm.is_initialized():
-                    is_rank_0 = deepspeed.comm.get_rank() == 0
-                
-                if is_rank_0:
-                    try:
-                        import swanlab
-                        swanlab.log(filtered_metrics, step)
-                        if 'learning_rate' in filtered_metrics:
-                            swanlab.log({'learning_rate': filtered_metrics['learning_rate']}, step)
-                        if 'grad_norm' in filtered_metrics:
-                            swanlab.log({'grad_norm': filtered_metrics['grad_norm']}, step)
-                        print_rank_0(f"SwanLab logged metrics at step {step}: {list(filtered_metrics.keys())}")
-                    except Exception as e:
-                        print_rank_0(f"Error logging to SwanLab: {str(e)}")
-            
-            # Print metrics
-            metrics_str = ", ".join(f"{k}={v:.4f}" for k, v in filtered_metrics.items())
-            print_rank_0(f"Step {step}: {metrics_str}")
 
     def save_model(self, output_dir=None, _internal_call=False):
         """
@@ -580,28 +558,7 @@ class MultimodalTrainer(Trainer):
         
         # 使用父类的training_step方法，确保传递num_items_in_batch参数
         loss = super().training_step(model, inputs, num_items_in_batch=num_items_in_batch)
-        
-        
-        # 始终记录训练损失到 SwanLab
-        if hasattr(self, 'custom_args') and getattr(self.custom_args, 'swanlab', False):
-            is_rank_0 = True
-            if deepspeed.comm.is_initialized():
-                is_rank_0 = deepspeed.comm.get_rank() == 0
-            
-            if is_rank_0:
-                try:
-                    import swanlab
-                    current_lr = self.lr_scheduler.get_last_lr()[0]
-                    train_loss = loss.item() if isinstance(loss, torch.Tensor) else loss
-                    swanlab.log({'train_loss': train_loss,
-                                 'learning_rate': current_lr,
-                                 }, self.state.global_step)
-                    if self.state.global_step % 10 == 0:  # 每10步打印一次，避免日志过多
-                        print_rank_0(f"Step {self.state.global_step}: train_loss={train_loss:.4f}, learning_rate={current_lr:.6f}")
-                except Exception as e:
-                    print_rank_0(f"记录训练损失到SwanLab时出错: {str(e)}")
-        
-        
+                
         return loss
 
     def _prepare_inputs(self, inputs):
@@ -647,7 +604,7 @@ class MultimodalTrainer(Trainer):
             batch_size = getattr(self.custom_args, 'eval_batch_size_per_gpu', 4)
             total_eval_samples = read_nums // batch_size
             
-            print_rank_0(f"Running Evaluation with batch size {dataloader.batch_size}")
+            print_rank_0(f"Running Evaluation with batch size {batch_size}")
             print_rank_0(f"Using estimated evaluation length of {total_eval_samples} examples")
             
             pbar = tqdm(total=total_eval_samples, desc="Evaluation")
@@ -725,29 +682,11 @@ class MultimodalTrainer(Trainer):
             # 添加前缀
             metrics = {f"{metric_key_prefix}_{k}" if not k.startswith(metric_key_prefix) else k: v for k, v in metrics.items()}
             
-            # 评估完成后记录到swanlab
-            if hasattr(self, 'custom_args') and getattr(self.custom_args, 'swanlab', False):
-                is_rank_0 = True
-                if deepspeed.comm.is_initialized():
-                    is_rank_0 = deepspeed.comm.get_rank() == 0
-                
-                if is_rank_0:
-                    try:
-                        import swanlab
-                        # 确保eval_loss被正确记录
-                        metrics_to_log = {**metrics}
-                        metrics_to_log['eval_loss'] = eval_loss
-                        swanlab.log(metrics_to_log, self.state.global_step)
-                        print_rank_0(f"直接记录评估指标 - Step {self.state.global_step}: {metrics_to_log}")
-                    except Exception as e:
-                        print_rank_0(f"评估循环中记录到SwanLab时出错: {str(e)}")
-            
             # 创建输出对象
             output = EvalOutput(metrics=metrics, num_samples=num_examples)
             
             return output
             
         finally:
-            # 恢复原始forward方法
             if self.model is not None and hasattr(self.model, 'forward') and 'original_forward' in locals():
                 self.model.forward = original_forward
