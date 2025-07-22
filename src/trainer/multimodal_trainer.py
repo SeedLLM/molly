@@ -140,27 +140,6 @@ class MultimodalTrainer(Trainer):
         # 保存tokenizer作为属性以保持向后兼容
         self.tokenizer = tokenizer
         
-        # 计算最大步数用于IterableDataset
-        max_steps = None
-        if train_dataset is not None and not hasattr(train_dataset, "__len__"):
-            # 对于IterableDataset，我们需要明确指定max_steps
-            batch_size = getattr(self.custom_args, 'batch_size_per_gpu', 4)
-            epochs = getattr(self.custom_args, 'epochs', 1)
-            
-            # 确保 read_nums 存在，如果不存在则提供默认值
-            if hasattr(self.custom_args, 'read_nums'):
-                read_nums = getattr(self.custom_args, 'read_nums')
-                # 如果 read_nums 是 None，提供默认值
-                if read_nums is None:
-                    read_nums = 1000
-                    print_rank_0(f"警告: read_nums 为 None，使用默认值 {read_nums}")
-            else:
-                read_nums = 1000
-                print_rank_0(f"警告: 未提供 read_nums，使用默认值 {read_nums}")
-                
-            max_steps = (read_nums // batch_size) * epochs
-            print_rank_0(f"计算得到的最大训练步数为 {max_steps}")
-        
         # 如果需要，将args转换为TrainingArguments
         if not isinstance(args, TrainingArguments) and args is not None:
             # 获取transformers版本
@@ -197,10 +176,7 @@ class MultimodalTrainer(Trainer):
                 "warmup_ratio": getattr(args, 'warmup_ratio', 0.1),
                 "deepspeed": getattr(args, 'ds_config_path', None)
             }
-            
-            # 添加max_steps参数（如果需要）
-            if max_steps is not None:
-                training_args_dict["max_steps"] = max_steps
+
             
             # 检查参数是否被支持
             def check_supported_param(param_name):
