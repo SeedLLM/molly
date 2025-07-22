@@ -1,15 +1,12 @@
 import torch
-import torch.distributed as dist
 from typing import Dict
 import os
 import json
 import numpy as np
 import pkg_resources
 from transformers import Trainer, TrainingArguments
-from transformers.trainer_utils import EvalPrediction
+from transformers.trainer_utils import EvalPrediction, EvalLoopOutput
 from transformers.trainer_callback import TrainerCallback
-from torch.utils.data import DataLoader, IterableDataset
-from transformers.trainer_pt_utils import IterableDatasetShard
 from tqdm import tqdm
 
 from ..utils.tools import print_rank_0
@@ -61,13 +58,6 @@ class EarlyStoppingCallback(TrainerCallback):
                 print_rank_0(f"Early stopping triggered after {self.patience_counter} evaluations without improvement")
                 control.should_training_stop = True
 
-class EvalOutput:
-    """Helper class to store evaluation outputs."""
-    def __init__(self, metrics, num_samples):
-        self.metrics = metrics
-        self.num_samples = num_samples
-        self.predictions = None
-        self.label_ids = None
 
 class MultimodalTrainer(Trainer):
     """
@@ -440,8 +430,12 @@ class MultimodalTrainer(Trainer):
             metrics = {f"{metric_key_prefix}_{k}" if not k.startswith(metric_key_prefix) else k: v for k, v in metrics.items()}
             
             # 创建输出对象
-            output = EvalOutput(metrics=metrics, num_samples=num_examples)
-            
+            output = EvalLoopOutput(
+                predictions=all_preds.numpy() if collect_logits else None,
+                label_ids=all_labels.numpy() if collect_logits else None,
+                metrics=metrics,
+                num_samples=num_examples
+            )
             return output
             
         finally:
