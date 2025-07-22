@@ -1,21 +1,16 @@
 import torch
 import torch.distributed as dist
-from typing import Optional, Dict, Any, Callable, List, Union, Tuple
-import logging
+from typing import Dict
 import os
 import json
-from dataclasses import dataclass
-import math
 import numpy as np
-from datetime import datetime
 import pkg_resources
 from transformers import Trainer, TrainingArguments
-from transformers.trainer_utils import EvalPrediction, IntervalStrategy
+from transformers.trainer_utils import EvalPrediction
 from transformers.trainer_callback import TrainerCallback
 from torch.utils.data import DataLoader, IterableDataset
-import torch.amp as amp
+from transformers.trainer_pt_utils import IterableDatasetShard
 from tqdm import tqdm
-import deepspeed
 
 from ..utils.tools import print_rank_0
 
@@ -53,7 +48,9 @@ class EarlyStoppingCallback(TrainerCallback):
             improved = True
         elif not self.greater_is_better and metric_value < self.best_metric:
             improved = True
-            
+        
+        print_rank_0(f"Current {self.metric_name}: {metric_value:.4f}, Best: {self.best_metric:.4f}, Improved: {improved}")
+
         if improved:
             self.best_metric = metric_value
             self.patience_counter = 0
@@ -65,34 +62,6 @@ class EarlyStoppingCallback(TrainerCallback):
             if self.patience_counter >= self.patience:
                 print_rank_0(f"Early stopping triggered after {self.patience_counter} evaluations without improvement")
                 control.should_training_stop = True
-
-class IterableDatasetShard(IterableDataset):
-    """
-    将IterableDataset分片以支持分布式训练
-    """
-    def __init__(self, iterable_dataset, batch_size, world_size, rank):
-        self.iterable_dataset = iterable_dataset
-        self.batch_size = batch_size
-        self.world_size = world_size
-        self.rank = rank
-        
-        # Try to get an estimated length for the dataset
-        self.estimated_len = None
-        if hasattr(iterable_dataset, 'estimated_len'):
-            # If the dataset has an estimated length, use it divided by world_size
-            self.estimated_len = iterable_dataset.estimated_len // world_size
-        elif hasattr(iterable_dataset, '__len__'):
-            # If the dataset has a __len__ method, use it divided by world_size
-            try:
-                self.estimated_len = len(iterable_dataset) // world_size
-            except (TypeError, AttributeError):
-                # If len() fails, don't set estimated_len
-                pass
-        
-    def __iter__(self):
-        for i, item in enumerate(self.iterable_dataset):
-            if i % self.world_size == self.rank:
-                yield item
 
 class EvalOutput:
     """Helper class to store evaluation outputs."""
@@ -142,9 +111,6 @@ class MultimodalTrainer(Trainer):
         
         # 如果需要，将args转换为TrainingArguments
         if not isinstance(args, TrainingArguments) and args is not None:
-            # 获取transformers版本
-            transformers_version = pkg_resources.get_distribution("transformers").version
-            
             # 构建transformers的训练参数
             training_args_dict = {
                 "output_dir": getattr(args, 'output_path', './output'),
