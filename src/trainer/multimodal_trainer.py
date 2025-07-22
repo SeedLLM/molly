@@ -391,7 +391,6 @@ class MultimodalTrainer(Trainer):
                 rank
             )
             
-            # 创建DataLoader
             return DataLoader(
                 sharded_dataset,
                 batch_size=self.args.per_device_eval_batch_size,
@@ -423,18 +422,6 @@ class MultimodalTrainer(Trainer):
         loss = super().training_step(model, inputs, num_items_in_batch=num_items_in_batch)
                 
         return loss
-
-    def _prepare_inputs(self, inputs):
-        """
-        准备输入数据，确保它们在正确的设备上
-        """
-        # 处理可能从IterableDataset来的字典数据结构
-        if isinstance(inputs, dict):
-            return {k: v.to(self.args.device) if isinstance(v, torch.Tensor) else v 
-                    for k, v in inputs.items()}
-        
-        # 处理从标准Dataset来的(inputs, labels)元组
-        return super()._prepare_inputs(inputs)
         
     def evaluation_loop(self, dataloader, description, prediction_loss_only=None, ignore_keys=None, metric_key_prefix="eval"):
         """
