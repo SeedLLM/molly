@@ -140,11 +140,6 @@ class MultimodalTrainer(Trainer):
         # 保存tokenizer作为属性以保持向后兼容
         self.tokenizer = tokenizer
         
-        # 设置早停参数
-        self.best_metric = float('-inf')
-        self.patience_counter = 0
-        self.early_stopping_patience = getattr(self.custom_args, 'early_stopping_patience', 3) if hasattr(self, 'custom_args') else 3
-        
         # 计算最大步数用于IterableDataset
         max_steps = None
         if train_dataset is not None and not hasattr(train_dataset, "__len__"):
@@ -248,7 +243,7 @@ class MultimodalTrainer(Trainer):
             model_init=model_init,
             compute_metrics=compute_metrics or self._compute_metrics,
             callbacks=[EarlyStoppingCallback(
-                patience=self.early_stopping_patience,
+                patience=getattr(self.custom_args, 'early_stopping_patience', 3),
                 metric_for_best_model=getattr(args, 'metric_for_best_model', 'eval_loss'),
                 greater_is_better=getattr(args, 'greater_is_better', False)
             )
@@ -404,10 +399,10 @@ class MultimodalTrainer(Trainer):
             
             # 保存multimodal特定配置
             config = {
-                'best_metric': self.best_metric,
-                'metric_for_best_model': self.args.metric_for_best_model,
+                'best_metric': getattr(self.custom_args, 'best_metric', float('-inf')),
+                'metric_for_best_model': self.args.greater_is_better,
                 'greater_is_better': self.args.greater_is_better,
-                'early_stopping_patience': self.early_stopping_patience,
+                'early_stopping_patience': getattr(self.custom_args, 'early_stopping_patience', 3),
             }
             
             # 保存LoRA配置信息
