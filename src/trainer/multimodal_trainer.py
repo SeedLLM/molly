@@ -48,8 +48,6 @@ class EarlyStoppingCallback(TrainerCallback):
             improved = True
         elif not self.greater_is_better and metric_value < self.best_metric:
             improved = True
-        
-        print_rank_0(f"Current {self.metric_name}: {metric_value:.4f}, Best: {self.best_metric:.4f}, Improved: {improved}")
 
         if improved:
             self.best_metric = metric_value
