@@ -365,26 +365,6 @@ class MultimodalTrainer(Trainer):
         else:
             # 使用默认方法处理常规Dataset
             return super().get_train_dataloader()
-
-    def training_step(self, model, inputs, num_items_in_batch=None):
-        """
-        Perform a training step on a batch of inputs.
-        
-        Args:
-            model: The model to train
-            inputs: The inputs and targets of the model
-            num_items_in_batch: Number of items in the batch
-            
-        Returns:
-            The training loss
-        """
-        model.train()
-        inputs = self._prepare_inputs(inputs)
-        
-        # 使用父类的training_step方法，确保传递num_items_in_batch参数
-        loss = super().training_step(model, inputs, num_items_in_batch=num_items_in_batch)
-                
-        return loss
         
     def evaluation_loop(self, dataloader, description, prediction_loss_only=None, ignore_keys=None, metric_key_prefix="eval"):
         """
