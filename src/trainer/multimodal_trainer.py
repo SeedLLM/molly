@@ -348,9 +348,6 @@ class MultimodalTrainer(Trainer):
             if 'grad_norm' in metrics and split == 'train':
                 prefixed_metrics['grad_norm'] = metrics['grad_norm']  # 保留无前缀的 grad_norm
                 
-            if 'learning_rate' in metrics and split == 'train':
-                prefixed_metrics['lr'] = metrics['learning_rate']  # 添加简化的 lr 指标
-                
             if 'loss' in metrics and split == 'eval':
                 prefixed_metrics['eval_loss'] = metrics['loss']  # 确保有 eval_loss
                 
@@ -594,62 +591,18 @@ class MultimodalTrainer(Trainer):
             if is_rank_0:
                 try:
                     import swanlab
-                    # 记录训练损失
+                    current_lr = self.lr_scheduler.get_last_lr()[0]
                     train_loss = loss.item() if isinstance(loss, torch.Tensor) else loss
-                    swanlab.log({'train_loss': train_loss}, self.state.global_step)
+                    swanlab.log({'train_loss': train_loss,
+                                 'learning_rate': current_lr,
+                                 }, self.state.global_step)
                     if self.state.global_step % 10 == 0:  # 每10步打印一次，避免日志过多
-                        print_rank_0(f"记录训练损失 - Step {self.state.global_step}: train_loss={train_loss:.4f}")
+                        print_rank_0(f"Step {self.state.global_step}: train_loss={train_loss:.4f}, learning_rate={current_lr:.6f}")
                 except Exception as e:
                     print_rank_0(f"记录训练损失到SwanLab时出错: {str(e)}")
         
-        # 计算并记录梯度范数
-        if self.args.gradient_accumulation_steps > 1:
-            # 如果使用梯度累积，只在累积完成后记录
-            if self.state.global_step % self.args.gradient_accumulation_steps == 0:
-                # 计算梯度范数
-                grad_norm = self._maybe_get_grad_norm()
-                if grad_norm is not None:
-                    # 记录到swanlab
-                    if hasattr(self, 'custom_args') and getattr(self.custom_args, 'swanlab', False):
-                        is_rank_0 = True
-                        if deepspeed.comm.is_initialized():
-                            is_rank_0 = deepspeed.comm.get_rank() == 0
-                        
-                        if is_rank_0:
-                            try:
-                                import swanlab
-                                metrics = {
-                                    'grad_norm': grad_norm,
-                                    'loss': loss.item() if isinstance(loss, torch.Tensor) else loss,
-                                    'lr': self.lr_scheduler.get_last_lr()[0] if hasattr(self, 'lr_scheduler') and self.lr_scheduler else self.args.learning_rate
-                                }
-                                swanlab.log(metrics, self.state.global_step)
-                                print_rank_0(f"直接记录训练指标 - Step {self.state.global_step}: {metrics}")
-                            except Exception as e:
-                                print_rank_0(f"训练步骤中记录到SwanLab时出错: {str(e)}")
         
         return loss
-
-    def _maybe_get_grad_norm(self):
-        """
-        获取当前梯度的范数
-        """
-        if hasattr(self.optimizer, "clip_grad_norm"):
-            # 如果优化器支持梯度裁剪，可以获取梯度范数
-            return self.optimizer.clip_grad_norm(self.args.max_grad_norm)
-        elif hasattr(self.model, "get_grad_norm"):
-            # DeepSpeed模型可能有自己的方法获取梯度范数
-            return self.model.get_grad_norm()
-        else:
-            # 手动计算梯度范数
-            parameters = [p for p in self.model.parameters() if p.grad is not None]
-            if len(parameters) == 0:
-                return None
-            device = parameters[0].grad.device
-            total_norm = torch.norm(
-                torch.stack([torch.norm(p.grad.detach(), 2).to(device) for p in parameters]), 2
-            )
-            return total_norm.item()
 
     def _prepare_inputs(self, inputs):
         """
