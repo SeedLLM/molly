@@ -230,33 +230,6 @@ class MultimodalTrainer(Trainer):
             
         return metrics
 
-    def compute_loss(self, model, inputs, return_outputs=False, **kwargs):
-        """
-        Compute the loss for multimodal training.
-        
-        Args:
-            model: The model
-            inputs: Model inputs
-            return_outputs: Whether to return model outputs alongside the loss
-            **kwargs: Additional arguments for compatibility with parent class
-            
-        Returns:
-            loss: Computed loss value
-            outputs: Model outputs (if return_outputs=True)
-        """
-        outputs = model(**inputs)
-        
-        if self.label_smoother is not None and "labels" in inputs:
-            loss = self.label_smoother(outputs, inputs["labels"])
-        else:
-            loss = outputs["loss"] if isinstance(outputs, dict) else outputs.loss
-            
-        if "attention_mask" in inputs:
-            # You can implement custom loss calculation based on attention mask if needed
-            pass
-            
-        return (loss, outputs) if return_outputs else loss
-
     def save_model(self, output_dir=None, _internal_call=False):
         """
         Save the model and training state.
