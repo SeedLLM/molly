@@ -365,43 +365,6 @@ class MultimodalTrainer(Trainer):
         else:
             # 使用默认方法处理常规Dataset
             return super().get_train_dataloader()
-    
-    def get_eval_dataloader(self, eval_dataset=None):
-        """
-        覆盖原有方法以支持IterableDataset
-        """
-        if eval_dataset is None and self.eval_dataset is None:
-            return None
-            
-        eval_dataset = eval_dataset if eval_dataset is not None else self.eval_dataset
-        
-        if isinstance(eval_dataset, IterableDataset):
-            # 处理IterableDataset
-            world_size = 1
-            rank = 0
-            if dist.is_initialized():
-                world_size = dist.get_world_size()
-                rank = dist.get_rank()
-                
-            # 分片IterableDataset
-            sharded_dataset = IterableDatasetShard(
-                eval_dataset, 
-                self.args.per_device_eval_batch_size, 
-                world_size, 
-                rank
-            )
-            
-            return DataLoader(
-                sharded_dataset,
-                batch_size=self.args.per_device_eval_batch_size,
-                collate_fn=self.data_collator,
-                drop_last=False,
-                num_workers=self.args.dataloader_num_workers,
-                pin_memory=self.args.dataloader_pin_memory,
-            )
-        else:
-            # 使用默认方法处理常规Dataset
-            return super().get_eval_dataloader(eval_dataset)
 
     def training_step(self, model, inputs, num_items_in_batch=None):
         """
