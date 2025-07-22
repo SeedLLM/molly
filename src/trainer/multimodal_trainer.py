@@ -330,42 +330,6 @@ class MultimodalTrainer(Trainer):
                 json.dump(config, f, indent=2)
             print_rank_0(f"多模态配置已保存到 {multimodal_config_path}")
 
-    def get_train_dataloader(self):
-        """
-        覆盖原有方法以支持IterableDataset
-        """
-        if self.train_dataset is None:
-            return None
-            
-        if isinstance(self.train_dataset, IterableDataset):
-            # 处理IterableDataset
-            world_size = 1
-            rank = 0
-            if dist.is_initialized():
-                world_size = dist.get_world_size()
-                rank = dist.get_rank()
-                
-            # 分片IterableDataset
-            sharded_dataset = IterableDatasetShard(
-                self.train_dataset, 
-                self.args.per_device_train_batch_size, 
-                world_size, 
-                rank
-            )
-            
-            # 创建DataLoader
-            return DataLoader(
-                sharded_dataset,
-                batch_size=self.args.per_device_train_batch_size,
-                collate_fn=self.data_collator,
-                drop_last=self.args.dataloader_drop_last,
-                num_workers=self.args.dataloader_num_workers,
-                pin_memory=self.args.dataloader_pin_memory,
-            )
-        else:
-            # 使用默认方法处理常规Dataset
-            return super().get_train_dataloader()
-        
     def evaluation_loop(self, dataloader, description, prediction_loss_only=None, ignore_keys=None, metric_key_prefix="eval"):
         """
         Override the evaluation loop to disable caching during evaluation
