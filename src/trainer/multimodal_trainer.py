@@ -171,7 +171,7 @@ class MultimodalTrainer(Trainer):
             eval_dataset=eval_dataset,
             processing_class=tokenizer,  # 使用新参数名
             model_init=model_init,
-            compute_metrics=compute_metrics or self._compute_metrics,
+            compute_metrics=compute_metrics,
             callbacks=[EarlyStoppingCallback(
                 patience=getattr(self.custom_args, 'early_stopping_patience', 3),
                 metric_for_best_model=getattr(args, 'metric_for_best_model', 'eval_loss'),
@@ -182,43 +182,6 @@ class MultimodalTrainer(Trainer):
             preprocess_logits_for_metrics=preprocess_logits_for_metrics,
             **kwargs  # 传递剩余参数
         )
-
-    def _compute_metrics(self, eval_pred: EvalPrediction) -> Dict[str, float]:
-        """
-        Compute evaluation metrics.
-        
-        Args:
-            eval_pred: Evaluation predictions and labels
-            
-        Returns:
-            metrics: Dictionary containing computed metrics
-        """
-        predictions, labels = eval_pred
-        metrics = {}
-        
-        # Calculate loss (if needed, depends on your implementation)
-        # This is a simplified example - you'd need to adapt to your model's output format
-        if isinstance(predictions, tuple):
-            logits = predictions[0]
-        else:
-            logits = predictions
-            
-        # Only consider positions where labels != -100
-        active_positions = labels != -100
-        active_logits = logits[active_positions]
-        active_labels = labels[active_positions]
-        
-        # Calculate perplexity
-        if active_labels.size > 0:
-            loss_fn = torch.nn.CrossEntropyLoss()
-            loss = loss_fn(torch.tensor(active_logits), torch.tensor(active_labels, dtype=torch.long))
-            metrics['perplexity'] = torch.exp(loss).item()
-            
-            # Calculate accuracy
-            preds = np.argmax(active_logits, axis=-1)
-            metrics['accuracy'] = (preds == active_labels).mean().item()
-            
-        return metrics
 
     def save_model(self, output_dir=None, _internal_call=False):
         """
