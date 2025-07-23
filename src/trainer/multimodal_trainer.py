@@ -8,6 +8,7 @@ from transformers import Trainer, TrainingArguments
 from transformers.trainer_utils import EvalPrediction, EvalLoopOutput
 from transformers.trainer_callback import TrainerCallback
 from tqdm import tqdm
+import inspect
 
 from ..utils.tools import print_rank_0
 
@@ -131,34 +132,11 @@ class MultimodalTrainer(Trainer):
                 "deepspeed": getattr(args, 'ds_config_path', None)
             }
 
-            
-            # 检查参数是否被支持
-            def check_supported_param(param_name):
-                try:
-                    test_dict = {"output_dir": "./test", param_name: training_args_dict[param_name]}
-                    TrainingArguments(**test_dict)
-                    return True
-                except Exception as e:
-                    print_rank_0(f"参数 {param_name} 不被当前版本支持: {str(e)}")
-                    return False
-            
-            # 修复参数兼容性问题
-            supported_params = {}
-            for param_name, param_value in training_args_dict.items():
-                if check_supported_param(param_name):
-                    supported_params[param_name] = param_value
-                elif param_name == "eval_strategy" and check_supported_param("evaluation_strategy"):
-                    # 如果 eval_strategy 不支持但 evaluation_strategy 支持
-                    supported_params["evaluation_strategy"] = param_value
-            
-            # 使用经过筛选的参数创建 TrainingArguments
-            try:
-                training_args = TrainingArguments(**supported_params)
-                print_rank_0(f"成功创建 TrainingArguments，使用以下参数: {list(supported_params.keys())}")
-            except Exception as e:
-                print_rank_0(f"创建 TrainingArguments 时出错: {str(e)}")
-                # 使用最小化参数创建
-                training_args = TrainingArguments(output_dir=getattr(args, 'output_path', './output'))
+            # 只保留TrainingArguments支持的参数
+            training_args_params = inspect.signature(TrainingArguments).parameters
+            training_args_dict = {k: v for k, v in training_args_dict.items()
+                                  if k in training_args_params and v is not None}
+            training_args = TrainingArguments(**training_args_dict)
             
             args = training_args
 
@@ -169,7 +147,7 @@ class MultimodalTrainer(Trainer):
             data_collator=data_collator,
             train_dataset=train_dataset,
             eval_dataset=eval_dataset,
-            processing_class=tokenizer,  # 使用新参数名
+            processing_class=tokenizer,
             model_init=model_init,
             compute_metrics=compute_metrics,
             callbacks=[EarlyStoppingCallback(
@@ -180,7 +158,7 @@ class MultimodalTrainer(Trainer):
             ],
             optimizers=optimizers,
             preprocess_logits_for_metrics=preprocess_logits_for_metrics,
-            **kwargs  # 传递剩余参数
+            **kwargs
         )
 
     def save_model(self, output_dir=None, _internal_call=False):
