@@ -36,7 +36,7 @@ class DNARNADataset(Dataset):
         read_nums=None,
         shuffle=False,
         seed=42,
-        num_workers=4,
+        num_workers=os.cpu_count(),
         type=None,
         **kwargs
     ):
