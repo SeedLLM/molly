@@ -135,7 +135,8 @@ def setup_dataloaders(args, tokenizer, dna_tokenizer):
         read_nums=None,
         shuffle=True,
         seed=42,
-        multimodal_k_tokens=args.multimodal_k_tokens
+        multimodal_k_tokens=args.multimodal_k_tokens,
+        num_workers=args.num_workers
     )
     
     # 创建评估数据集（如果需要）
@@ -159,7 +160,8 @@ def setup_dataloaders(args, tokenizer, dna_tokenizer):
             read_nums=None,
             shuffle=False,
             seed=42,
-            multimodal_k_tokens=args.multimodal_k_tokens
+            multimodal_k_tokens=args.multimodal_k_tokens,
+            num_workers=args.num_workers
         )
     
     # 计算并添加一些训练相关的参数
@@ -307,6 +309,8 @@ def main():
                        help='Path to DeepSpeed configuration')
     parser.add_argument('--local_rank', type=int, default=-1,
                        help='Local rank for distributed training')
+    parser.add_argument('--num_workers', type=int, default=128,
+                       help='Number of workers for data loading')
     
     # Add DeepSpeed arguments
     parser = deepspeed.add_config_arguments(parser)
