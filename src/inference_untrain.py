@@ -11,16 +11,12 @@ import traceback
 from typing import List, Tuple
 
 import torch
-import pandas as pd
 from tqdm import tqdm
-from torch.nn.utils.rnn import pad_sequence
 from transformers import AutoTokenizer, AutoModelForCausalLM, AutoModelForMaskedLM
-from peft import PeftModel, PeftConfig  # 添加PEFT库导入
 
 # Import our custom modules
-from src.model import QwenWithNt, get_qwen_nt_config
-from src.utils.tools import print_rank_0
-from src.dataset.dna_rna_dataset import OmicsTestDataset, qwen_dna_collate_fn, DatasetConfig, qwen_dna_collate_fn_inference
+from model import QwenWithNt, get_qwen_nt_config
+from dataset.dna_rna_dataset import OmicsTestDataset, qwen_dna_collate_fn, DatasetConfig, qwen_dna_collate_fn_inference
 
 
 def parse_args():
@@ -63,7 +59,7 @@ class MultiModalInfer:
             torch.cuda.manual_seed_all(args.seed)
 
         # ‑- Device --------------------------------------------------------------
-        self.device = torch.device("cuda" if args.device == "cuda" and torch.cuda.is_available() else "cpu")
+        self.device = torch.device("cuda:1" if args.device == "cuda" and torch.cuda.is_available() else "cpu")
 
         # ‑- Tokenisers ----------------------------------------------------------
         print("Loading tokenizers…")

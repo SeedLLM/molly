@@ -518,30 +518,16 @@ class DNARNADataset(Dataset):
             encoded_seq = self._encode_sequence(seq, seq_type)
             omic_ids_list.append(encoded_seq)
 
-        if self.dataset_type == 'inference':
-            return {
-                "input_ids": input_ids,
-                "output_ids": output_ids,
-                "reasoning_token_ids": reasoning_ids,
-                "omic_ids_list": omic_ids_list,
-                "omic_start_pos_list": omic_start_pos_list,
-                "task": sample.get("task", ""),
-                "kind": kinds_string,
-                "label": sample.get("label", ""),
-                "raw_input": input_text,
-                "raw_output": output_text,
-            }
-        else:
-            return {
-                "input_ids": input_ids,
-                "output_ids": output_ids,
-                "reasoning_token_ids": reasoning_ids,
-                "omic_ids_list": omic_ids_list,
-                "omic_start_pos_list": omic_start_pos_list,
-                "task": sample.get("task", ""),
-                "kind": kinds_string,
-                "label": sample.get("label", "")
-            }
+        return {
+            "input_ids": input_ids,
+            "output_ids": output_ids,
+            "reasoning_token_ids": reasoning_ids,
+            "omic_ids_list": omic_ids_list,
+            "omic_start_pos_list": omic_start_pos_list,
+            "task": sample.get("task", ""),
+            "kind": kinds_string,
+            "label": sample.get("label", "")
+        }
 
     
     def process_sample(self, sample: Dict[str, Any]) -> Dict[str, torch.Tensor]:
@@ -592,28 +578,15 @@ class DNARNADataset(Dataset):
             labels.extend([-100] * pad_len)
             attention_mask.extend([0] * pad_len)
         # Convert to tensors
-        if self.dataset_type == 'inference':
-            return {
-                "input_ids": torch.LongTensor(input_ids),
-                "omic_ids": torch.stack(sample["omic_ids_list"]),
-                "omic_start_pos_list": sample["omic_start_pos_list"],
-                "labels": torch.LongTensor(labels),
-                "attention_mask": torch.LongTensor(attention_mask),
-                "task": sample["task"],
-                "kind": sample["kind"],
-                "raw_label": sample["label"],
-                "raw_input": sample["raw_input"],
-                "raw_output": sample["raw_output"],
-            }
-        else:
-            return {
-                "input_ids": torch.LongTensor(input_ids),
-                "omic_ids": torch.stack(sample["omic_ids_list"]),
-                "omic_start_pos_list": sample["omic_start_pos_list"],
-                "labels": torch.LongTensor(labels),
-                "attention_mask": torch.LongTensor(attention_mask),
-                "cal_metric_pos": cal_metric_pos,
-            }
+        
+        return {
+            "input_ids": torch.LongTensor(input_ids),
+            "omic_ids": torch.stack(sample["omic_ids_list"]),
+            "omic_start_pos_list": sample["omic_start_pos_list"],
+            "labels": torch.LongTensor(labels),
+            "attention_mask": torch.LongTensor(attention_mask),
+            "cal_metric_pos": cal_metric_pos,
+        }
     
     def _encode_sequence(self, seq: str, seq_type: str) -> torch.LongTensor:
         """
