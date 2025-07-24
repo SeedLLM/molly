@@ -98,49 +98,13 @@ class MultimodalTrainer(Trainer):
         # 保存tokenizer作为属性以保持向后兼容
         self.tokenizer = tokenizer
         
-        # 如果需要，将args转换为TrainingArguments
-        if not isinstance(args, TrainingArguments) and args is not None:
-            # 构建transformers的训练参数
-            training_args_dict = {
-                "output_dir": getattr(args, 'output_path', './output'),
-                "learning_rate": float(getattr(args, 'lr', 1e-5)),
-                "per_device_train_batch_size": getattr(args, 'batch_size_per_gpu', 4),
-                "per_device_eval_batch_size": getattr(args, 'eval_batch_size_per_gpu', 4),
-                "num_train_epochs": float(getattr(args, 'epochs', 3)),
-                "weight_decay": getattr(args, 'weight_decay', 0.01),
-                "save_strategy": "steps",
-                "eval_strategy": "steps",  # 部分版本使用 eval_strategy
-                "logging_strategy": "steps",
-                "save_steps": getattr(args, 'save_interval', 10000),
-                "eval_steps": getattr(args, 'eval_interval', 500),
-                "logging_steps": getattr(args, 'show_avg_loss_step', 100),
-                "bf16": getattr(args, 'bf16', False),
-                "fp16": getattr(args, 'fp16', False),
-                "local_rank": getattr(args, 'local_rank', -1),
-                "save_total_limit": getattr(args, 'save_total_limit', 2),
-                "load_best_model_at_end": True,
-                "metric_for_best_model": getattr(args, 'metric_for_best_model', "eval_loss"),
-                "greater_is_better": getattr(args, 'greater_is_better', False),
-                "report_to": getattr(args, 'report_to', "swanlab"),
-                "logging_first_step": True,
-                "seed": getattr(args, 'seed', 42),
-                "dataloader_drop_last": False,
-                "dataloader_num_workers": getattr(args, 'dataloader_num_workers', 0),
-                "gradient_accumulation_steps": getattr(args, 'gradient_accumulation_steps', 1),
-                "warmup_steps": getattr(args, 'warmup_steps', 0),
-                "warmup_ratio": getattr(args, 'warmup_ratio', 0.1),
-                "deepspeed": getattr(args, 'ds_config_path', None)
-            }
+        # 只保留TrainingArguments支持的参数
+        training_args_params = inspect.signature(TrainingArguments).parameters
+        training_args_dict = {k: v for k, v in vars(args).items() if k in training_args_params and v is not None}
+        training_args = TrainingArguments(**training_args_dict)
+        
+        args = training_args
 
-            # 只保留TrainingArguments支持的参数
-            training_args_params = inspect.signature(TrainingArguments).parameters
-            training_args_dict = {k: v for k, v in training_args_dict.items()
-                                  if k in training_args_params and v is not None}
-            training_args = TrainingArguments(**training_args_dict)
-            
-            args = training_args
-
-        # 初始化父类，使用processing_class替代tokenizer
         super().__init__(
             model=model,
             args=args,
