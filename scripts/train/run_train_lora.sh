@@ -1,11 +1,11 @@
 enable_list="multimodal model.model.embed_tokens model.model.layers model.lm_head"
-experiment_name="Qwen3_0.6B_NT_sft_exp1_0724"
+experiment_name="Qwen3_4B_NT_sft_exp1_0724"
 output_path="/fs-computility/ai4agr/chenzihong/res_data_model/biomllm_res/${experiment_name}"
 
 options="--experiment-name $experiment_name \
 --output_dir $output_path \
 --use-lora \
---text-model-path /tos-bjml-ai4agr/lijinzhe/BioMLLM/Qwen3-0.6B \
+--text-model-path /tos-bjml-ai4agr/lijinzhe/BioMLLM/Qwen3-4B \
 --bio-model-path /tos-bjml-ai4agr/lijinzhe/BioModel/nucleotide-transformer/  \
 --multimodal-k-tokens 128 \
 --device cuda \
@@ -45,7 +45,7 @@ options="--experiment-name $experiment_name \
 " 
 # --save_safetensors \
 
-deepspeed --include localhost:0,1 \
+deepspeed --include localhost:0,1,2,3,4,5,6,7 \
 src/train_lora.py \
---deepspeed_config /tos-bjml-ai4agr/chenzihong/code/BioMLLM_V2/src/configs/zero2_config.json \
+--deepspeed_config /tos-bjml-ai4agr/chenzihong/code/BioMLLM_V2/src/configs/zero3_config.json \
 $options

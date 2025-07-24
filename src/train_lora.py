@@ -48,54 +48,46 @@ def setup_tokenizers(args):
 def setup_model_and_optimizer(args, tokenizer):
     print_rank_0("-------------------init model-------------------------")
 
-    # Get model configuration
     model_config = get_qwen_nt_config(args.text_model_path, args.bio_model_path)
     model_config.project_token_num = args.multimodal_k_tokens
-    
-    # Initialize model
-    model = QwenWithNt(model_config)
-    model.set_special_tokens(tokenizer)
-    
-    # Load pretrained model parameters if requested
+
+    with torch.device("cpu"):
+        my_model = QwenWithNt(model_config)
+    my_model.set_special_tokens(tokenizer)
+
     if args.load_pretrained:
-        # Load Qwen model parameters
-        print_rank_0(f"Loading Qwen model from {args.text_model_path}")
         qwen_model = AutoModelForCausalLM.from_pretrained(
-            args.text_model_path, 
-            trust_remote_code=True, 
-            torch_dtype=torch.bfloat16
+            args.text_model_path,
+            torch_dtype=torch.bfloat16,
+            trust_remote_code=True,
+            low_cpu_mem_usage=True,
+            device_map=None
         )
-        model.model.load_state_dict(qwen_model.state_dict())
-        del qwen_model
+        my_model.model = qwen_model
 
-        print(f"Loading NT model from {args.bio_model_path}")
-        bio_model = AutoModelForMaskedLM.from_pretrained(args.bio_model_path, trust_remote_code=True)
-        
-        # 加载权重时，strict=False以跳过不匹配的部分
-        model.bio_model.load_state_dict(bio_model.state_dict(), strict=True)
-        del bio_model
-        
-        print("Base models loaded successfully")
+        nt_model = AutoModelForMaskedLM.from_pretrained(
+            args.bio_model_path,
+            torch_dtype=torch.bfloat16,
+            trust_remote_code=True,
+            low_cpu_mem_usage=True,
+            device_map=None
+        )
+        my_model.bio_model = nt_model
 
+        print_rank_0("Base models loaded successfully")
     else:
-        print_rank_0("Initializing model with random weights (not loading pretrained parameters)")
-    
-    # Freeze DNA-BERT parameters if requested
+        print_rank_0("Initializing model with random weights")
+
+    # 4. 冻结 NT（DNA-BERT）参数
     if args.freeze_nt:
         print_rank_0("Freezing Nucleotide Transformer parameters")
-        for name, param in model.bio_model.named_parameters():
-            param.requires_grad = False
-    
-    # Print total parameter count
-    all_params = sum(p.numel() for p in model.parameters())
-    print_rank_0(f"Total model parameters: {all_params:,}")
-    
-    # Convert model to bfloat16 for efficiency
-    torch.cuda.empty_cache()
-    gc.collect()
-    model = model.to(torch.bfloat16).to(args.device)
-    
-    return model, model_config
+        for p in my_model.bio_model.parameters():
+            p.requires_grad = False
+
+    total = sum(p.numel() for p in my_model.parameters())
+    print_rank_0(f"Total parameters: {total:,}")
+
+    return my_model, model_config
 
 def setup_dataloaders(args, tokenizer, dna_tokenizer):
     """
