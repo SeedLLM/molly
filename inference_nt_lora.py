@@ -12,12 +12,12 @@ import pandas as pd
 from tqdm import tqdm
 from torch.nn.utils.rnn import pad_sequence
 from transformers import AutoTokenizer, AutoModelForCausalLM, AutoModelForMaskedLM
-from peft import PeftModel, PeftConfig  # 添加PEFT库导入
+from peft import PeftModel  # 添加PEFT库导入
 
 # Import our custom modules
 from src.model import QwenWithNt, get_qwen_nt_config
 from src.utils.tools import print_rank_0
-from src.dataset.dna_rna_dataset import DNARNADataset, qwen_dna_collate_fn, DatasetConfig, qwen_dna_collate_fn_inference
+from src.dataset.dna_rna_dataset import OmicsTestDataset, qwen_dna_collate_fn, DatasetConfig, qwen_dna_collate_fn_inference
 
 
 def parse_args():
@@ -239,7 +239,7 @@ class MultiModalInfer:
             multimodal_k_tokens = args.multimodal_k_tokens,
             type = 'inference'
         )
-        test_dataset = DNARNADataset(args.dataset_path, 
+        test_dataset = OmicsTestDataset(args.dataset_path, 
                                      self.text_tokenizer, 
                                      test_config,
                                      self.bio_tokenizer,
