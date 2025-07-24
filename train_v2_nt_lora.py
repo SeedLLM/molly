@@ -20,7 +20,6 @@ import deepspeed
 
 from src.trainer import MultimodalTrainer
 from src.model import QwenWithBert, get_qwen_bert_config
-from src.dataset import load_dataloder
 from src.dataset.dna_rna_dataset import DNARNADataset, qwen_dna_collate_fn, DatasetConfig
 from src.utils import print_rank_0, refresh_config, set_up_trainable_param, init_swanlab_rank_0, swanlab_log_rank_0, pre_train_lora
 
