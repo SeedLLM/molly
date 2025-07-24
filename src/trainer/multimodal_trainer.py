@@ -7,57 +7,11 @@ import pkg_resources
 from transformers import Trainer, TrainingArguments
 from transformers.trainer_utils import EvalPrediction, EvalLoopOutput
 from transformers.trainer_callback import TrainerCallback
+from transformers import EarlyStoppingCallback
 from tqdm import tqdm
 import inspect
 
 from ..utils.tools import print_rank_0
-
-class EarlyStoppingCallback(TrainerCallback):
-    """
-    早停回调，用于在验证指标不再改善时提前结束训练
-    """
-    def __init__(self, patience=3, metric_for_best_model="eval_loss", greater_is_better=False):
-        """
-        初始化早停回调
-        
-        Args:
-            patience: 容忍多少次评估而不改善
-            metric_for_best_model: 用于判断最佳模型的指标名称
-            greater_is_better: 对于指标，值越大是否越好
-        """
-        self.patience = patience
-        self.metric_name = metric_for_best_model
-        self.greater_is_better = greater_is_better
-        self.best_metric = float('-inf') if greater_is_better else float('inf')
-        self.patience_counter = 0
-        
-    def on_evaluate(self, args, state, control, metrics=None, **kwargs):
-        """
-        每次评估后调用
-        """
-        if metrics is None or self.metric_name not in metrics:
-            return
-            
-        metric_value = metrics[self.metric_name]
-        
-        # 检查指标是否有改善
-        improved = False
-        if self.greater_is_better and metric_value > self.best_metric:
-            improved = True
-        elif not self.greater_is_better and metric_value < self.best_metric:
-            improved = True
-
-        if improved:
-            self.best_metric = metric_value
-            self.patience_counter = 0
-            print_rank_0(f"Best {self.metric_name} improved to {metric_value:.4f}")
-        else:
-            self.patience_counter += 1
-            print_rank_0(f"{self.metric_name} did not improve for {self.patience_counter} evaluations")
-            
-            if self.patience_counter >= self.patience:
-                print_rank_0(f"Early stopping triggered after {self.patience_counter} evaluations without improvement")
-                control.should_training_stop = True
 
 
 class MultimodalTrainer(Trainer):
@@ -92,55 +46,17 @@ class MultimodalTrainer(Trainer):
             optimizers: 优化器和调度器元组
             preprocess_logits_for_metrics: 预处理logits的函数
         """
-        # 提取自定义参数
-        self.custom_args = kwargs.pop('custom_args', args)
         
         # 保存tokenizer作为属性以保持向后兼容
         self.tokenizer = tokenizer
         
-        # 如果需要，将args转换为TrainingArguments
-        if not isinstance(args, TrainingArguments) and args is not None:
-            # 构建transformers的训练参数
-            training_args_dict = {
-                "output_dir": getattr(args, 'output_path', './output'),
-                "learning_rate": float(getattr(args, 'lr', 1e-5)),
-                "per_device_train_batch_size": getattr(args, 'batch_size_per_gpu', 4),
-                "per_device_eval_batch_size": getattr(args, 'eval_batch_size_per_gpu', 4),
-                "num_train_epochs": float(getattr(args, 'epochs', 3)),
-                "weight_decay": getattr(args, 'weight_decay', 0.01),
-                "save_strategy": "steps",
-                "eval_strategy": "steps",  # 部分版本使用 eval_strategy
-                "logging_strategy": "steps",
-                "save_steps": getattr(args, 'save_interval', 10000),
-                "eval_steps": getattr(args, 'eval_interval', 500),
-                "logging_steps": getattr(args, 'show_avg_loss_step', 100),
-                "bf16": getattr(args, 'bf16', False),
-                "fp16": getattr(args, 'fp16', False),
-                "local_rank": getattr(args, 'local_rank', -1),
-                "save_total_limit": getattr(args, 'save_total_limit', 2),
-                "load_best_model_at_end": True,
-                "metric_for_best_model": getattr(args, 'metric_for_best_model', "eval_loss"),
-                "greater_is_better": getattr(args, 'greater_is_better', False),
-                "report_to": getattr(args, 'report_to', "swanlab"),
-                "logging_first_step": True,
-                "seed": getattr(args, 'seed', 42),
-                "dataloader_drop_last": False,
-                "dataloader_num_workers": getattr(args, 'dataloader_num_workers', 0),
-                "gradient_accumulation_steps": getattr(args, 'gradient_accumulation_steps', 1),
-                "warmup_steps": getattr(args, 'warmup_steps', 0),
-                "warmup_ratio": getattr(args, 'warmup_ratio', 0.1),
-                "deepspeed": getattr(args, 'ds_config_path', None)
-            }
+        # 只保留TrainingArguments支持的参数
+        training_args_params = inspect.signature(TrainingArguments).parameters
+        training_args_dict = {k: v for k, v in vars(args).items() if k in training_args_params and v is not None}
+        training_args = TrainingArguments(**training_args_dict)
+        
+        args = training_args
 
-            # 只保留TrainingArguments支持的参数
-            training_args_params = inspect.signature(TrainingArguments).parameters
-            training_args_dict = {k: v for k, v in training_args_dict.items()
-                                  if k in training_args_params and v is not None}
-            training_args = TrainingArguments(**training_args_dict)
-            
-            args = training_args
-
-        # 初始化父类，使用processing_class替代tokenizer
         super().__init__(
             model=model,
             args=args,
@@ -150,16 +66,17 @@ class MultimodalTrainer(Trainer):
             processing_class=tokenizer,
             model_init=model_init,
             compute_metrics=compute_metrics,
-            callbacks=[EarlyStoppingCallback(
-                patience=getattr(self.custom_args, 'early_stopping_patience', 3),
-                metric_for_best_model=getattr(args, 'metric_for_best_model', 'eval_loss'),
-                greater_is_better=getattr(args, 'greater_is_better', False)
-            )
+            callbacks=[
+                EarlyStoppingCallback(
+                    early_stopping_patience=getattr(args, 'early_stopping_patience', 3),
+                )
             ],
             optimizers=optimizers,
             preprocess_logits_for_metrics=preprocess_logits_for_metrics,
             **kwargs
         )
+        self.args = args
+
 
     def save_model(self, output_dir=None, _internal_call=False):
         """
@@ -170,7 +87,7 @@ class MultimodalTrainer(Trainer):
             _internal_call: Whether this is an internal call
         """
         if output_dir is None:
-            output_dir = self.args.output_dir
+            output_dir = self.output_dir
             
         os.makedirs(output_dir, exist_ok=True)
         
@@ -184,8 +101,7 @@ class MultimodalTrainer(Trainer):
         if self.is_world_process_zero():
             print_rank_0(f"保存模型到 {output_dir}")
             
-            # 1. 检查模型是否包含LoRA权重并适当保存
-            if hasattr(self, 'custom_args') and getattr(self.custom_args, 'use_lora', False):
+            if self.use_lora:
                 # 对于带有LoRA的模型，需要特殊处理
                 print_rank_0("检测到PEFT/LoRA模型，使用专用方法保存适配器...")
                 # 保存LoRA适配器权重
@@ -235,7 +151,7 @@ class MultimodalTrainer(Trainer):
             self.deepspeed.save_checkpoint(ds_output_dir)
         
         # 5. 保存训练参数
-        if self.args.should_save and hasattr(self, 'custom_args') and self.is_world_process_zero():
+        if self.should_save and self.is_world_process_zero():
             # 保存训练参数
             training_args_path = os.path.join(output_dir, "training_args.bin")
             torch.save(self.args, training_args_path)
@@ -243,18 +159,17 @@ class MultimodalTrainer(Trainer):
             
             # 保存multimodal特定配置
             config = {
-                'best_metric': getattr(self.custom_args, 'best_metric', float('-inf')),
+                'best_metric': getattr(self.args, 'best_metric', float('-inf')),
                 'metric_for_best_model': self.args.greater_is_better,
                 'greater_is_better': self.args.greater_is_better,
-                'early_stopping_patience': getattr(self.custom_args, 'early_stopping_patience', 3),
+                'early_stopping_patience': getattr(self.args, 'early_stopping_patience', 3),
             }
             
             # 保存LoRA配置信息
-            if hasattr(self, 'custom_args'):
-                config['multimodal_config'] = {
-                    'dna_max_length': getattr(self.custom_args, 'multimodal_k_tokens', 64),
-                    'text_max_length': getattr(self.custom_args, 'max_len', 1024),
-                }
+            config['multimodal_config'] = {
+                'dna_max_length': getattr(self.args, 'multimodal_k_tokens', 64),
+                'text_max_length': getattr(self.args, 'max_len', 1024),
+            }
             
             multimodal_config_path = os.path.join(output_dir, 'multimodal_config.json')
             with open(multimodal_config_path, 'w') as f:
@@ -288,8 +203,8 @@ class MultimodalTrainer(Trainer):
             
             total_eval_samples = None
             
-            read_nums = getattr(self.custom_args, 'eval_read_nums', 100)
-            batch_size = getattr(self.custom_args, 'eval_batch_size_per_gpu', 4)
+            read_nums = getattr(self.args, 'eval_read_nums', 100)
+            batch_size = getattr(self.args, 'eval_batch_size_per_gpu', 4)
             total_eval_samples = read_nums // batch_size
             
             print_rank_0(f"Running Evaluation with batch size {batch_size}")
@@ -336,8 +251,8 @@ class MultimodalTrainer(Trainer):
                 pbar.update(1)
                 
                 # 如果达到最大评估样本数，提前结束
-                if hasattr(self.custom_args, 'eval_read_nums'):
-                    eval_read_nums = getattr(self.custom_args, 'eval_read_nums')
+                if hasattr(self.args, 'eval_read_nums'):
+                    eval_read_nums = getattr(self.args, 'eval_read_nums')
                     if eval_read_nums is not None and num_data >= eval_read_nums:
                         print_rank_0(f"已达到最大评估样本数 {eval_read_nums}，提前结束评估")
                         break

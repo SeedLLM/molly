@@ -26,30 +26,29 @@ from src.utils import print_rank_0, refresh_config, set_up_trainable_param, init
 
 from src.model import QwenWithNt, get_qwen_nt_config
 
+from transformers import set_seed
+
+# 全局生效
+set_seed(42)
+
 
 def setup_tokenizers(args):
     """
     Setup tokenizers for both text and DNA models.
     """
-    # Load text tokenizer
     tokenizer = AutoTokenizer.from_pretrained(args.text_model_path, trust_remote_code=True)
     
-    # Add special tokens for DNA sequences
     new_tokens = ["<|dna_start|>", "<|dna_pad|>", "<|dna_end|>", 
                   "<|rna_start|>", "<|rna_pad|>", "<|rna_end|>"]
     tokenizer.add_special_tokens({"additional_special_tokens": new_tokens})
     
-    # Load DNA tokenizer
     dna_tokenizer = AutoTokenizer.from_pretrained(args.bio_model_path, trust_remote_code=True)
     
     return tokenizer, dna_tokenizer
 
 def setup_model_and_optimizer(args, tokenizer):
-    """
-    Setup model, optimizer and learning rate scheduler.
-    """
     print_rank_0("-------------------init model-------------------------")
-    
+
     # Get model configuration
     model_config = get_qwen_nt_config(args.text_model_path, args.bio_model_path)
     model_config.project_token_num = args.multimodal_k_tokens
@@ -132,11 +131,11 @@ def setup_dataloaders(args, tokenizer, dna_tokenizer):
         tokenizer=tokenizer,
         dataset_config=train_config,
         multimodal_tokenizer=dna_tokenizer,
-        read_nums=None,
+        read_nums=args.read_nums,
         shuffle=True,
         seed=42,
         multimodal_k_tokens=args.multimodal_k_tokens,
-        num_workers=args.num_workers
+        num_workers=args.dataloader_num_workers,
     )
     
     # 创建评估数据集（如果需要）
@@ -157,39 +156,32 @@ def setup_dataloaders(args, tokenizer, dna_tokenizer):
             tokenizer=tokenizer,
             dataset_config=eval_config,
             multimodal_tokenizer=dna_tokenizer,
-            read_nums=None,
+            read_nums=args.eval_read_nums,
             shuffle=False,
             seed=42,
             multimodal_k_tokens=args.multimodal_k_tokens,
-            num_workers=args.num_workers
+            num_workers=args.dataloader_num_workers,
         )
-    
-    # 计算并添加一些训练相关的参数
-    if train_dataset is not None:
-        # 计算训练步数
-        dataset_size = len(train_dataset)
-        
-        steps_per_epoch = dataset_size // (args.batch_size_per_gpu * num_dp_ranks)
-        args.num_micro_update_steps = int(steps_per_epoch * args.epochs)
-        args.num_global_update_steps = args.num_micro_update_steps // args.gradient_accumulation_steps
-        args.warmup_steps = int(args.num_micro_update_steps * args.warmup)
-        
-        print_rank_0(f"Dataset size: {dataset_size}")
-        print_rank_0(f"--->NUMBER OF MICRO UPDATE STEPS: {args.num_micro_update_steps}")
-        print_rank_0(f"--->NUMBER OF GLOBAL UPDATE STEPS: {args.num_global_update_steps}")
-        print_rank_0(f"--->NUMBER OF WARMUP STEPS: {args.warmup_steps}")
-        print_rank_0(f"--->Base learning rate is {args.lr}")
     
     return train_dataset, eval_dataset
 
 def main():
-    # import pdb; pdb.set_trace()
     parser = ArgumentParser()
-    # Logo info
+    # Log
     parser.add_argument('--experiment-name', type=str, default='Qwen_NT_sft_exp_',
                        help='Experiment name for logging and checkpoints')
+    parser.add_argument('--output_dir', type=str, required=True,
+                    help='Output path for saving models and logs')
     parser.add_argument('--swanlab', action='store_true',
                        help='Enable swanlab logging')
+    parser.add_argument(
+    "--report_to",
+    type=str,
+    nargs='+',
+    default=["swanlab"],
+    choices=["swanlab", "tensorboard", "wandb", "mlflow", "neptune"],
+    help="Reporting tool(s) for logging"
+)
     parser.add_argument('--swanlab-team', type=str, default=None,
                        help='Swanlab team name')
     parser.add_argument('--swanlab-project', type=str, default=None,
@@ -200,10 +192,8 @@ def main():
                        help='Profile log directory')
     parser.add_argument('--global-rank', default=-1, type=int,
                        help='Global rank for distributed training')
-    parser.add_argument('--output-path', default="", type=str,
-                       help='Output path for saving models and logs')
     
-    # Model info
+    # Model
     parser.add_argument('--text-model-path', type=str, required=True,
                        help='Path to the Qwen model')
     parser.add_argument('--bio-model-path', type=str, required=True,
@@ -213,12 +203,18 @@ def main():
     parser.add_argument('--device', type=str, default="cuda")
     parser.add_argument('--load-pretrained', action='store_true', default=True,
                        help='Load pretrained parameters for both models')
+    parser.add_argument('--load_best_model_at_end', type=bool, default=True,
+                       help='Load the best model at the end of training')
     parser.add_argument('--freeze-dna-bert', action='store_true', default=True,
                        help='Freeze DNA-BERT parameters')
     parser.add_argument('--freeze-nt', action='store_true', default=True,
                        help='Freeze Nucleotide Transformer parameters')
+    parser.add_argument('--bf16', action='store_true', default=False,
+                       help='Use bfloat16 precision')
+    parser.add_argument('--fp16', action='store_true', default=False,
+                       help='Use mixed precision training with fp16')
     
-    # Dataset info
+    # Dataset
     parser.add_argument('--train-dataset-path', type=str, required=True,
                        help='Path to training dataset (parquet format)')
     parser.add_argument('--eval-dataset-path', type=str, default=None,
@@ -234,6 +230,8 @@ def main():
                        help='Number of samples to read')
     parser.add_argument('--eval-read-nums', type=int, default=None,
                        help='Number of evaluation samples to read')
+    parser.add_argument('--dataloader_num_workers', type=int, default=0,
+                       help='Number of workers for data loading')
     
     # Dataset compatibility parameters
     parser.add_argument('--prefix', type=str, default=None,
@@ -252,19 +250,28 @@ def main():
     parser.add_argument('--mode', type=str, default='sft',
                        choices=['pretrain', 'sft'],
                        help='Training mode')
-    parser.add_argument('--batch-size-per-gpu', type=int, default=4,
+    parser.add_argument('--per_device_train_batch_size', type=int, required=True,
                        help='Batch size per GPU')
-    parser.add_argument('--eval-batch-size-per-gpu', type=int, default=4,
+    parser.add_argument('--per_device_eval_batch_size', type=int, default=4,
                        help='Evaluation batch size per GPU')
-    parser.add_argument('--epochs', type=int, default=1,
+    parser.add_argument('--num_train_epochs', type=int, required=True,
                        help='Number of training epochs')
     parser.add_argument('--train-iters', type=int, default=None,
                        help='Total number of training iterations (alternative to epochs)')
-    parser.add_argument('--save-interval', type=int, default=10000,
+    parser.add_argument('--save_strategy', type=str, required=True,
+                       choices=['no', 'steps', 'epoch'],
+                       help='Strategy for saving checkpoints')
+    parser.add_argument('--save_steps', type=int, default=10000,
                        help='Steps between model saves')
-    parser.add_argument('--eval-interval', type=int, default=10000,
+    parser.add_argument('--eval_strategy', type=str, required=True,
+                       choices=['no', 'steps', 'epoch'],
+                       help='Strategy for evaluation')
+    parser.add_argument('--eval_steps', type=int, default=10000,
                        help='Steps between evaluations')
-    parser.add_argument('--show_avg_loss_step', type=int, default=10000,
+    parser.add_argument('--logging_strategy', type=str, required=True,
+                          choices=['no', 'steps', 'epoch'],
+                          help='Strategy for logging')
+    parser.add_argument('--logging_steps', type=int, default=10000,
                        help='Steps between loss logging')
     parser.add_argument('--enable-list', nargs='+', type=str, default=None,
                        help='List of enabled parameters')
@@ -272,16 +279,12 @@ def main():
                        help='Save trainable parameters only')
     
     # Optimizer configuration
+    parser.add_argument('--learning_rate', type=float, required=True,
+                    help='Learning rate')
     parser.add_argument('--gradient-accumulation-steps', type=int, default=1,
                        help='Gradient accumulation steps')
-    parser.add_argument('--warmup-min-lr', type=float, default=1.0e-5,
-                       help='Minimum learning rate for warmup')
-    parser.add_argument('--warmup-max-lr', type=float, default=2.0e-4,
-                       help='Maximum learning rate for warmup')
-    parser.add_argument('--warmup', type=float, default=0.01,
+    parser.add_argument('--warmup_ratio', type=float, default=0.01,
                        help='Warmup ratio')
-    parser.add_argument('--lr', type=float, default=1.0e-4,
-                       help='Learning rate')
     parser.add_argument('--weight-decay', type=float, default=5e-4,
                        help='Weight decay')
     parser.add_argument('--eps', type=float, default=1e-8,
@@ -294,7 +297,7 @@ def main():
                        help='Patience for early stopping')
     parser.add_argument('--metric-for-best-model', type=str, default='eval_loss',
                        help='Metric to track for model selection')
-    parser.add_argument('--greater-is-better', action='store_true',
+    parser.add_argument('--greater_is_better',  type=bool, default=False,
                        help='Whether higher metric is better')
     
     # LoRA training
@@ -304,13 +307,8 @@ def main():
     parser.add_argument('--save-total-limit', type=int, default=10,
                         help='Number of total checkpoints to keep')
     
-    # DeepSpeed
-    parser.add_argument('--ds-config-path', type=str, required=True,
-                       help='Path to DeepSpeed configuration')
     parser.add_argument('--local_rank', type=int, default=-1,
                        help='Local rank for distributed training')
-    parser.add_argument('--num_workers', type=int, default=128,
-                       help='Number of workers for data loading')
     
     # Add DeepSpeed arguments
     parser = deepspeed.add_config_arguments(parser)
@@ -366,8 +364,8 @@ def main():
             print_rank_0("-------- Training Configuration --------")
             print_rank_0(f"Model: {args.text_model_path} + {args.bio_model_path}")
             print_rank_0(f"Multimodal tokens: {args.multimodal_k_tokens}")
-            print_rank_0(f"Batch size: {args.batch_size_per_gpu}")
-            print_rank_0(f"Learning rate: {args.lr}")
+            print_rank_0(f"Batch size: {args.per_device_train_batch_size}")
+            print_rank_0(f"Learning rate: {args.learning_rate}")
             print_rank_0(f"Dataset: {args.train_dataset_path}")
             if args.swanlab:
                 print_rank_0(f"SwanLab logging: Enabled")
@@ -392,7 +390,6 @@ def main():
             raise
         
     except Exception as e:
-        # Log any errors
         traceback_info = traceback.format_exc()
         if args.global_rank == 0:
             print_rank_0(traceback_info, logging.ERROR)
@@ -401,7 +398,6 @@ def main():
         raise e
     
     finally:
-        # Cleanup
         if writer is not None:
             writer.close()
         if dist.is_initialized():
