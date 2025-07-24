@@ -3,13 +3,11 @@ from typing import Dict
 import os
 import json
 import numpy as np
-import pkg_resources
 from transformers import Trainer, TrainingArguments
-from transformers.trainer_utils import EvalPrediction, EvalLoopOutput
-from transformers.trainer_callback import TrainerCallback
 from transformers import EarlyStoppingCallback
 from tqdm import tqdm
 import inspect
+from peft import PeftModel
 
 from utils.tools import print_rank_0
 
@@ -76,3 +74,21 @@ class MultimodalTrainer(Trainer):
             **kwargs
         )
         self.args = args
+        self.args.load_best_model_at_end = False
+
+    def save_model(self, output_dir=None, _internal_call=False):
+        """
+        重写保存逻辑，确保 LoRA 权重被正确保存。
+        """
+        output_dir = output_dir if output_dir is not None else self.args.output_dir
+        os.makedirs(output_dir, exist_ok=True)
+
+        if isinstance(self.model.model, PeftModel):
+            self.model.model.save_pretrained(output_dir)
+            print_rank_0(f"LoRA adapter saved to {output_dir}")
+
+            projector_path = os.path.join(output_dir, "multimodal_projector.bin")
+            torch.save(self.model.multimodal_projector.state_dict(), projector_path)
+            print_rank_0(f"Multimodal projector saved to {projector_path}")
+        else:
+            super().save_model(output_dir, _internal_call)
