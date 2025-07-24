@@ -12,8 +12,8 @@ options="--experiment-name $experiment_name \
 --load-pretrained \
 --load_best_model_at_end True \
 --freeze-nt \
---train-dataset-path /tos-bjml-ai4agr/lijinzhe/dataset/BioMLLM/stage3_train_data/stage3_train_nt_dna_rna.parquet \
---eval-dataset-path /tos-bjml-ai4agr/lijinzhe/dataset/BioMLLM/stage3_train_data/val_nt_dna_rna.parquet \
+--train-dataset-path /tos-bjml-ai4agr/lijinzhe/dataset/BioMLLM/rewritten_8k/train_dna_rna.parquet \
+--eval-dataset-path /tos-bjml-ai4agr/lijinzhe/dataset/BioMLLM/rewritten_8k/valid_dna_rna.parquet \
 --max-len 1024 \
 --max-src-len 1024 \
 --eval-max-len 1024 \
@@ -22,8 +22,8 @@ options="--experiment-name $experiment_name \
 --mode sft \
 --per_device_train_batch_size 2 \
 --per_device_eval_batch_size 4 \
---read-nums 16500 \
---eval-read-nums 500 \
+--read-nums 3000 \
+--eval-read-nums 1000 \
 --num_train_epochs 3 \
 --learning_rate 1.0e-5 \
 --bf16 \
@@ -45,7 +45,13 @@ options="--experiment-name $experiment_name \
 " 
 # --save_safetensors \
 
+<<<<<<< HEAD
 deepspeed --include localhost:0,1,2,3,4,5,6,7 \
 src/train_lora.py \
 --deepspeed_config /tos-bjml-ai4agr/chenzihong/code/BioMLLM_V2/src/configs/zero3_config.json \
+=======
+deepspeed --include localhost:0,1,2,3 \
+src/train_lora.py \
+--deepspeed_config /tos-bjml-ai4agr/lijinzhe/BioMLLM/dp_config/zero3_config.json \
+>>>>>>> ee39f946829b3dc1d90860353d39679b7ad3c3f7
 $options
