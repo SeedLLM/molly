@@ -55,7 +55,7 @@ from typing import Callable
 from argparse import Namespace
 from torch.utils.data import DataLoader
 
-from ..utils.tools import print_rank_0
+from utils.tools import print_rank_0
 
 import swanlab
 

@@ -45,6 +45,6 @@ options="--experiment-name $experiment_name \
 " 
 
 deepspeed --include localhost:0,1 \
-train_v2_nt_lora.py \
---deepspeed_config /tos-bjml-ai4agr/chenzihong/code/BioMLLM_V2/zero2_config.json \
+src/train_lora.py \
+--deepspeed_config /tos-bjml-ai4agr/chenzihong/code/BioMLLM_V2/src/configs/zero2_config.json \
 $options

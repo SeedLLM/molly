@@ -11,7 +11,7 @@ from transformers import EarlyStoppingCallback
 from tqdm import tqdm
 import inspect
 
-from ..utils.tools import print_rank_0
+from utils.tools import print_rank_0
 
 
 class MultimodalTrainer(Trainer):
