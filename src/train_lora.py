@@ -308,6 +308,8 @@ def main():
     
     parser.add_argument('--local_rank', type=int, default=-1,
                        help='Local rank for distributed training')
+    parser.add_argument('--save_safetensors', type=bool, default=False,
+                       help='Save model in safetensors format')
     
     # Add DeepSpeed arguments
     parser = deepspeed.add_config_arguments(parser)

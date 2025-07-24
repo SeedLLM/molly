@@ -1,5 +1,5 @@
 enable_list="multimodal model.model.embed_tokens model.model.layers model.lm_head"
-experiment_name="Qwen3_0.6B_NT_sft_exp1_0718"
+experiment_name="Qwen3_0.6B_NT_sft_exp1_0724"
 output_path="/fs-computility/ai4agr/chenzihong/res_data_model/biomllm_res/${experiment_name}"
 
 options="--experiment-name $experiment_name \
@@ -29,7 +29,7 @@ options="--experiment-name $experiment_name \
 --bf16 \
 --enable-list $enable_list \
 --save_strategy steps \
---save_steps 1000 \
+--save_steps 100 \
 --eval_strategy steps \
 --eval_steps 100 \
 --logging_strategy steps \
@@ -43,6 +43,7 @@ options="--experiment-name $experiment_name \
 --greater_is_better False \
 --warmup_ratio 0.1 \
 " 
+# --save_safetensors \
 
 deepspeed --include localhost:0,1 \
 src/train_lora.py \
