@@ -92,8 +92,6 @@ class MultimodalTrainer(Trainer):
             optimizers: 优化器和调度器元组
             preprocess_logits_for_metrics: 预处理logits的函数
         """
-        # 提取自定义参数
-        self.custom_args = kwargs.pop('custom_args', args)
         
         # 保存tokenizer作为属性以保持向后兼容
         self.tokenizer = tokenizer
@@ -115,7 +113,7 @@ class MultimodalTrainer(Trainer):
             model_init=model_init,
             compute_metrics=compute_metrics,
             callbacks=[EarlyStoppingCallback(
-                patience=getattr(self.custom_args, 'early_stopping_patience', 3),
+                patience=getattr(args, 'early_stopping_patience', 3),
                 metric_for_best_model=getattr(args, 'metric_for_best_model', 'eval_loss'),
                 greater_is_better=getattr(args, 'greater_is_better', False)
             )
@@ -124,6 +122,8 @@ class MultimodalTrainer(Trainer):
             preprocess_logits_for_metrics=preprocess_logits_for_metrics,
             **kwargs
         )
+        self.args = args
+
 
     def save_model(self, output_dir=None, _internal_call=False):
         """
@@ -134,7 +134,7 @@ class MultimodalTrainer(Trainer):
             _internal_call: Whether this is an internal call
         """
         if output_dir is None:
-            output_dir = self.args.output_dir
+            output_dir = self.output_dir
             
         os.makedirs(output_dir, exist_ok=True)
         
@@ -148,8 +148,7 @@ class MultimodalTrainer(Trainer):
         if self.is_world_process_zero():
             print_rank_0(f"保存模型到 {output_dir}")
             
-            # 1. 检查模型是否包含LoRA权重并适当保存
-            if hasattr(self, 'custom_args') and getattr(self.custom_args, 'use_lora', False):
+            if self.use_lora:
                 # 对于带有LoRA的模型，需要特殊处理
                 print_rank_0("检测到PEFT/LoRA模型，使用专用方法保存适配器...")
                 # 保存LoRA适配器权重
@@ -199,7 +198,7 @@ class MultimodalTrainer(Trainer):
             self.deepspeed.save_checkpoint(ds_output_dir)
         
         # 5. 保存训练参数
-        if self.args.should_save and hasattr(self, 'custom_args') and self.is_world_process_zero():
+        if self.should_save and self.is_world_process_zero():
             # 保存训练参数
             training_args_path = os.path.join(output_dir, "training_args.bin")
             torch.save(self.args, training_args_path)
@@ -207,18 +206,17 @@ class MultimodalTrainer(Trainer):
             
             # 保存multimodal特定配置
             config = {
-                'best_metric': getattr(self.custom_args, 'best_metric', float('-inf')),
+                'best_metric': getattr(self.args, 'best_metric', float('-inf')),
                 'metric_for_best_model': self.args.greater_is_better,
                 'greater_is_better': self.args.greater_is_better,
-                'early_stopping_patience': getattr(self.custom_args, 'early_stopping_patience', 3),
+                'early_stopping_patience': getattr(self.args, 'early_stopping_patience', 3),
             }
             
             # 保存LoRA配置信息
-            if hasattr(self, 'custom_args'):
-                config['multimodal_config'] = {
-                    'dna_max_length': getattr(self.custom_args, 'multimodal_k_tokens', 64),
-                    'text_max_length': getattr(self.custom_args, 'max_len', 1024),
-                }
+            config['multimodal_config'] = {
+                'dna_max_length': getattr(self.args, 'multimodal_k_tokens', 64),
+                'text_max_length': getattr(self.args, 'max_len', 1024),
+            }
             
             multimodal_config_path = os.path.join(output_dir, 'multimodal_config.json')
             with open(multimodal_config_path, 'w') as f:
@@ -252,8 +250,8 @@ class MultimodalTrainer(Trainer):
             
             total_eval_samples = None
             
-            read_nums = getattr(self.custom_args, 'eval_read_nums', 100)
-            batch_size = getattr(self.custom_args, 'eval_batch_size_per_gpu', 4)
+            read_nums = getattr(self.args, 'eval_read_nums', 100)
+            batch_size = getattr(self.args, 'eval_batch_size_per_gpu', 4)
             total_eval_samples = read_nums // batch_size
             
             print_rank_0(f"Running Evaluation with batch size {batch_size}")
@@ -300,8 +298,8 @@ class MultimodalTrainer(Trainer):
                 pbar.update(1)
                 
                 # 如果达到最大评估样本数，提前结束
-                if hasattr(self.custom_args, 'eval_read_nums'):
-                    eval_read_nums = getattr(self.custom_args, 'eval_read_nums')
+                if hasattr(self.args, 'eval_read_nums'):
+                    eval_read_nums = getattr(self.args, 'eval_read_nums')
                     if eval_read_nums is not None and num_data >= eval_read_nums:
                         print_rank_0(f"已达到最大评估样本数 {eval_read_nums}，提前结束评估")
                         break
