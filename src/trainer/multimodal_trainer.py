@@ -7,57 +7,11 @@ import pkg_resources
 from transformers import Trainer, TrainingArguments
 from transformers.trainer_utils import EvalPrediction, EvalLoopOutput
 from transformers.trainer_callback import TrainerCallback
+from transformers import EarlyStoppingCallback
 from tqdm import tqdm
 import inspect
 
 from ..utils.tools import print_rank_0
-
-class EarlyStoppingCallback(TrainerCallback):
-    """
-    早停回调，用于在验证指标不再改善时提前结束训练
-    """
-    def __init__(self, patience=3, metric_for_best_model="eval_loss", greater_is_better=False):
-        """
-        初始化早停回调
-        
-        Args:
-            patience: 容忍多少次评估而不改善
-            metric_for_best_model: 用于判断最佳模型的指标名称
-            greater_is_better: 对于指标，值越大是否越好
-        """
-        self.patience = patience
-        self.metric_name = metric_for_best_model
-        self.greater_is_better = greater_is_better
-        self.best_metric = float('-inf') if greater_is_better else float('inf')
-        self.patience_counter = 0
-        
-    def on_evaluate(self, args, state, control, metrics=None, **kwargs):
-        """
-        每次评估后调用
-        """
-        if metrics is None or self.metric_name not in metrics:
-            return
-            
-        metric_value = metrics[self.metric_name]
-        
-        # 检查指标是否有改善
-        improved = False
-        if self.greater_is_better and metric_value > self.best_metric:
-            improved = True
-        elif not self.greater_is_better and metric_value < self.best_metric:
-            improved = True
-
-        if improved:
-            self.best_metric = metric_value
-            self.patience_counter = 0
-            print_rank_0(f"Best {self.metric_name} improved to {metric_value:.4f}")
-        else:
-            self.patience_counter += 1
-            print_rank_0(f"{self.metric_name} did not improve for {self.patience_counter} evaluations")
-            
-            if self.patience_counter >= self.patience:
-                print_rank_0(f"Early stopping triggered after {self.patience_counter} evaluations without improvement")
-                control.should_training_stop = True
 
 
 class MultimodalTrainer(Trainer):
@@ -112,11 +66,10 @@ class MultimodalTrainer(Trainer):
             processing_class=tokenizer,
             model_init=model_init,
             compute_metrics=compute_metrics,
-            callbacks=[EarlyStoppingCallback(
-                patience=getattr(args, 'early_stopping_patience', 3),
-                metric_for_best_model=getattr(args, 'metric_for_best_model', 'eval_loss'),
-                greater_is_better=getattr(args, 'greater_is_better', False)
-            )
+            callbacks=[
+                EarlyStoppingCallback(
+                    early_stopping_patience=getattr(args, 'early_stopping_patience', 3),
+                )
             ],
             optimizers=optimizers,
             preprocess_logits_for_metrics=preprocess_logits_for_metrics,
