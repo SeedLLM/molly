@@ -12,7 +12,10 @@ import pandas as pd
 from tqdm import tqdm
 from torch.nn.utils.rnn import pad_sequence
 from transformers import AutoTokenizer, AutoModelForCausalLM, AutoModelForMaskedLM
-from peft import PeftModel  # 添加PEFT库导入
+from peft import (
+    PeftModel,
+    LoraConfig
+)
 
 # Import our custom modules
 from model import QwenWithNt, get_qwen_nt_config
@@ -81,7 +84,6 @@ class MultiModalInfer:
 
     def _load_model(self):
         args = self.args
-        
         # Get model configuration
         model_config = get_qwen_nt_config(args.text_model_path, args.bio_model_path)
         model_config.project_token_num = args.multimodal_k_tokens
@@ -90,139 +92,44 @@ class MultiModalInfer:
         self.model = QwenWithNt(model_config)
         self.model.set_special_tokens(self.text_tokenizer)
         
+        print(f"Loading base Qwen model from {args.text_model_path}")
+        qwen_model = AutoModelForCausalLM.from_pretrained(
+            args.text_model_path, 
+            trust_remote_code=True, 
+            torch_dtype=torch.bfloat16
+        )
+        self.model.model.load_state_dict(qwen_model.state_dict())
+        del qwen_model
+        
+        # 加载NT模型参数
+        print(f"Loading NT model from {args.bio_model_path}")
+        bio_model = AutoModelForMaskedLM.from_pretrained(args.bio_model_path, trust_remote_code=True)
+        
+        self.model.bio_model.load_state_dict(bio_model.state_dict())
+        del bio_model
+
         # 检查是否使用LoRA
         if args.use_lora:
             print("LoRA mode enabled, checking for LoRA weights...")
-            lora_path = os.path.join(args.trained_model_path, "lora_weights")
-            
-            if os.path.exists(lora_path):
-                print(f"Found LoRA adapter at {lora_path}")
-                try:
-                    # 加载基础模型
-                    print(f"Loading base Qwen model from {args.text_model_path}")
-                    qwen_model = AutoModelForCausalLM.from_pretrained(
-                        args.text_model_path, 
-                        trust_remote_code=True, 
-                        torch_dtype=torch.bfloat16
-                    )
-                    self.model.model.load_state_dict(qwen_model.state_dict())
-                    del qwen_model
-                    
-                    # 加载NT模型参数
-                    print(f"Loading NT model from {args.bio_model_path}")
-                    bio_model = AutoModelForMaskedLM.from_pretrained(args.bio_model_path, trust_remote_code=True)
-                    
-                    self.model.bio_model.load_state_dict(bio_model.state_dict())
-                    del bio_model
-                    
-                    # 加载LoRA适配器
-                    print(f"Applying LoRA adapter from {lora_path}")
-                    # config = PeftConfig.from_pretrained(lora_path)
-                    self.model.model = PeftModel.from_pretrained(self.model.model, lora_path)
-                    
-                    # 加载多模态投影器权重（如果存在）
-                    projector_path = os.path.join(args.trained_model_path, "pytorch_model.bin")
-                    if os.path.exists(projector_path):
-                        print(f"Loading projector weights from {projector_path}")
-                        try:
-                            state_dict = torch.load(projector_path, map_location="cpu")
-                            projector_dict = {}
-                            for key, value in state_dict.items():
-                                if "multimodal_projector" in key:
-                                    new_key = key.replace("multimodal_projector.", "")
-                                    projector_dict[new_key] = value
-                            
-                            if projector_dict:
-                                missing, unexpected = self.model.multimodal_projector.load_state_dict(projector_dict, strict=False)
-                                print(f"Projector weights loaded. Missing keys: {missing}, Unexpected keys: {unexpected}")
-                                print(f"Projector weights loaded. Missing keys: {len(missing)}, Unexpected keys: {len(unexpected)}")
-                        except Exception as e:
-                            print(f"Error loading projector weights: {e}")
-                            print(traceback.format_exc())
+            lora_path = args.trained_model_path
 
-                except Exception as e:
-                    print(f"Error loading LoRA model: {e}")
-                    print(traceback.format_exc())
-                    print("Falling back to standard model loading...")
-                    self._load_standard_model()
-            else:
-                print(f"LoRA adapter not found at {lora_path}, falling back to standard model...")
-                self._load_standard_model()
-        else:
-            # 标准模型加载
-            self._load_standard_model()
+            print("LoRA mode enabled")
+            self.model.model = PeftModel.from_pretrained(
+                self.model.model,
+                lora_path,
+                torch_dtype=torch.bfloat16
+            )
+
+            projector_path = os.path.join(args.trained_model_path, "multimodal_projector.bin")
+            if os.path.exists(projector_path):
+                self.model.multimodal_projector.load_state_dict(
+                    torch.load(projector_path, map_location="cpu")
+                )
+                print("Multimodal projector loaded.")       
             
         # Move model to device and set to evaluation mode
         self.model = self.model.to(torch.bfloat16).to(self.device)
         self.model.eval()
-
-    def _load_standard_model(self):
-        args = self.args
-        print(f"Loading standard checkpoint from {args.trained_model_path}")
-        
-        try:
-            # 尝试直接加载权重
-            ckpt_path = os.path.join(args.trained_model_path, "pytorch_model.bin")
-            if not os.path.exists(ckpt_path):
-                ckpt_path = args.trained_model_path
-                
-            ckpt = torch.load(ckpt_path, map_location="cpu")
-            
-            # 检查是否为DeepSpeed检查点
-            if isinstance(ckpt, dict) and "model_state_dict" in ckpt:
-                state_dict = ckpt["model_state_dict"]
-            else:
-                state_dict = ckpt
-                
-            # 加载状态字典
-            missing, unexpected = self.model.load_state_dict(state_dict, strict=False)
-            print(f"Model loaded successfully")
-            if missing:
-                print(f"Missing keys: {len(missing)} keys")
-            if unexpected:
-                print(f"Unexpected keys: {len(unexpected)} keys")
-        except Exception as e:
-            print(f"Error loading checkpoint: {str(e)}")
-            print("Loading base models without fine-tuned weights...")
-            
-            # Load Qwen model parameters
-            print(f"Loading Qwen model from {args.text_model_path}")
-            qwen_model = AutoModelForCausalLM.from_pretrained(
-                args.text_model_path, 
-                trust_remote_code=True, 
-                torch_dtype=torch.bfloat16
-            )
-            self.model.model.load_state_dict(qwen_model.state_dict())
-            del qwen_model  # Free memory
-            
-            # Load NT model parameters
-            print(f"Loading NT model from {args.bio_model_path}")
-            
-            # 加载DNA模型配置
-            from src.model.esm_config import EsmConfig
-            from src.model.modeling_esm import EsmModel
-            
-            # 直接从预训练模型加载配置，确保与预训练模型完全一致
-            bio_config = EsmConfig.from_pretrained(args.bio_model_path)
-            
-            # 更新模型配置中的bio_config
-            # model_config.bio_config = bio_config
-            
-            # 重新创建bio_model部分，使用正确的配置
-            self.model.bio_model = EsmModel(bio_config)
-            
-            # 加载预训练权重
-            print(f"Loading NT model from {args.bio_model_path}")
-            dna_model = EsmModel.from_pretrained(
-                args.bio_model_path,
-                config=bio_config
-            )
-            
-            # 加载权重时，strict=False以跳过不匹配的部分
-            self.model.bio_model.load_state_dict(dna_model.state_dict(), strict=False)
-            del dna_model  # Free memory
-            
-            print("Base models loaded successfully")
 
     def run_dataset(self):
         """Run inference sample-by-sample without padding."""

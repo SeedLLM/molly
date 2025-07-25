@@ -4,6 +4,7 @@ import torch.optim as optim
 import deepspeed.ops as ds_optim
 import deepspeed
 
+
 def print_rank_0(*args, **kwargs):
     """
     仅在rank为0的进程上打印消息
@@ -309,5 +310,5 @@ def pre_train_lora(model, args):
     model.model.print_trainable_parameters()
 
     for param in model.multimodal_projector.parameters():
-        param.requires_grad = False
+        param.requires_grad = True
     return model

@@ -194,8 +194,10 @@ def main():
     parser.add_argument('--device', type=str, default="cuda")
     parser.add_argument('--load-pretrained', action='store_true', default=True,
                        help='Load pretrained parameters for both models')
-    parser.add_argument('--load_best_model_at_end', type=bool, default=True,
+    parser.add_argument('--load_best_model_at_end', action='store_true',
                        help='Load the best model at the end of training')
+    parser.add_argument('--greater_is_better', action='store_true',
+                        help='Load the best model at the end of training')
     parser.add_argument('--freeze-dna-bert', action='store_true', default=True,
                        help='Freeze DNA-BERT parameters')
     parser.add_argument('--freeze-nt', action='store_true', default=True,
@@ -288,8 +290,6 @@ def main():
                        help='Patience for early stopping')
     parser.add_argument('--metric-for-best-model', type=str, default='eval_loss',
                        help='Metric to track for model selection')
-    parser.add_argument('--greater_is_better',  type=bool, default=False,
-                       help='Whether higher metric is better')
     
     # LoRA training
     parser.add_argument('--use-lora', action='store_true',
