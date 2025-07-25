@@ -45,13 +45,7 @@ options="--experiment-name $experiment_name \
 " 
 # --save_safetensors \
 
-<<<<<<< HEAD
-deepspeed --include localhost:0,1,2,3,4,5,6,7 \
-src/train_lora.py \
---deepspeed_config /tos-bjml-ai4agr/chenzihong/code/BioMLLM_V2/src/configs/zero3_config.json \
-=======
 deepspeed --include localhost:0,1,2,3 \
 src/train_lora.py \
---deepspeed_config /tos-bjml-ai4agr/lijinzhe/BioMLLM/dp_config/zero3_config.json \
->>>>>>> ee39f946829b3dc1d90860353d39679b7ad3c3f7
+--deepspeed_config src/configs/zero3_config.json \
 $options
