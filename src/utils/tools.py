@@ -297,7 +297,7 @@ def pre_train_lora(model, args):
     target_modules = list(target_modules)
 
     lora_config = LoraConfig(
-        r=32,
+        r=args.lora_r,
         lora_alpha=64,
         target_modules=target_modules,
         lora_dropout=0.05,

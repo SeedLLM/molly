@@ -302,6 +302,8 @@ def main():
                        help='Local rank for distributed training')
     parser.add_argument('--save_safetensors', type=bool, default=False,
                        help='Save model in safetensors format')
+    parser.add_argument('--lora_r', type=int, default=64,
+                       help='LoRA rank')
     
     # Add DeepSpeed arguments
     parser = deepspeed.add_config_arguments(parser)
