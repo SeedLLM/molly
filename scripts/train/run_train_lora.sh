@@ -10,7 +10,6 @@ options="--experiment-name $experiment_name \
 --multimodal-k-tokens 128 \
 --device cuda \
 --load-pretrained \
---load_best_model_at_end True \
 --freeze-nt \
 --train-dataset-path /tos-bjml-ai4agr/lijinzhe/dataset/BioMLLM/rewritten_8k/train_dna_rna.parquet \
 --eval-dataset-path /tos-bjml-ai4agr/lijinzhe/dataset/BioMLLM/rewritten_8k/valid_dna_rna.parquet \
@@ -40,11 +39,11 @@ options="--experiment-name $experiment_name \
 --swanlab-team BioMLLM_report \
 --swanlab-project BioMLLM_NT \
 --report_to swanlab \
---greater_is_better False \
 --warmup_ratio 0.1 \
---load_best_model_at_end False \
 " 
+# --load_best_model_at_end \
 # --save_safetensors \
+# --greater_is_better \
 
 deepspeed --include localhost:0,1,2,3 \
 src/train_lora.py \

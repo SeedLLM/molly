@@ -74,7 +74,6 @@ class MultimodalTrainer(Trainer):
             **kwargs
         )
         self.args = args
-        self.args.load_best_model_at_end = False
 
     def save_model(self, output_dir=None, _internal_call=False):
         """
