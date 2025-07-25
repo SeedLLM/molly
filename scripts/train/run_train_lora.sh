@@ -1,11 +1,11 @@
 enable_list="multimodal model.model.embed_tokens model.model.layers model.lm_head"
-experiment_name="Qwen3_4B_NT_sft_exp1_0724"
-output_path="/fs-computility/ai4agr/chenzihong/res_data_model/biomllm_res/${experiment_name}"
+experiment_name="Qwen3_0.6B_NT_sft_0725_exp1"
+output_path="/tos-bjml-ai4agr/lijinzhe/BioMLLM/RES_Model/${experiment_name}"
 
 options="--experiment-name $experiment_name \
 --output_dir $output_path \
 --use-lora \
---text-model-path /tos-bjml-ai4agr/lijinzhe/BioMLLM/Qwen3-4B \
+--text-model-path /tos-bjml-ai4agr/lijinzhe/BioMLLM/Qwen3-0.6B \
 --bio-model-path /tos-bjml-ai4agr/lijinzhe/BioModel/nucleotide-transformer/  \
 --multimodal-k-tokens 128 \
 --device cuda \
@@ -22,16 +22,16 @@ options="--experiment-name $experiment_name \
 --mode sft \
 --per_device_train_batch_size 2 \
 --per_device_eval_batch_size 4 \
---read-nums 3000 \
---eval-read-nums 1000 \
+--read-nums 2000 \
+--eval-read-nums 300 \
 --num_train_epochs 3 \
 --learning_rate 1.0e-5 \
 --bf16 \
 --enable-list $enable_list \
 --save_strategy steps \
 --save_steps 100 \
---eval_strategy steps \
 --eval_steps 100 \
+--eval_strategy steps \
 --logging_strategy steps \
 --logging_steps 20 \
 --save_trainable False \
@@ -42,16 +42,11 @@ options="--experiment-name $experiment_name \
 --report_to swanlab \
 --greater_is_better False \
 --warmup_ratio 0.1 \
+--load_best_model_at_end False \
 " 
 # --save_safetensors \
 
-<<<<<<< HEAD
-deepspeed --include localhost:0,1,2,3,4,5,6,7 \
-src/train_lora.py \
---deepspeed_config /tos-bjml-ai4agr/chenzihong/code/BioMLLM_V2/src/configs/zero3_config.json \
-=======
 deepspeed --include localhost:0,1,2,3 \
 src/train_lora.py \
---deepspeed_config /tos-bjml-ai4agr/lijinzhe/BioMLLM/dp_config/zero3_config.json \
->>>>>>> ee39f946829b3dc1d90860353d39679b7ad3c3f7
+--deepspeed_config /tos-bjml-ai4agr/chenzihong/code/BioMLLM_V2/src/configs/zero3_config.json \
 $options
