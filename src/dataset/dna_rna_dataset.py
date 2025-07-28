@@ -169,8 +169,8 @@ class OmicsTestDataset(Dataset):
 
         # 提取 DNA/RNA 序列，并记录位置
         pattern_map = {
-            "dna": r"<dna>\s*([ACGTacgt]+)\s*<dna>",
-            "rna": r"<rna>\s*([ACGTacgt]+)\s*<rna>"
+            "dna": r"<dna>\s*([ACGTNacgtn]+)\s*<dna>",
+            "rna": r"<rna>\s*([ACGTNacgtn]+)\s*<rna>"
         }
 
         # Determine which special tokens to use based on sequence type
@@ -452,8 +452,8 @@ class DNARNADataset(Dataset):
 
         # 提取 DNA/RNA 序列，并记录位置
         pattern_map = {
-            "dna": r"<dna>\s*([ACGTacgt]+)\s*<dna>",
-            "rna": r"<rna>\s*([ACGTacgt]+)\s*<rna>"
+            "dna": r"<dna>\s*([ACGTNacgtn]+)\s*<dna>",
+            "rna": r"<rna>\s*([ACGTNacgtn]+)\s*<rna>"
         }
 
         # Determine which special tokens to use based on sequence type
@@ -522,6 +522,9 @@ class DNARNADataset(Dataset):
             encoded_seq = self._encode_sequence(seq, seq_type)
             omic_ids_list.append(encoded_seq)
 
+        # if len(omic_ids_list) != 2:
+        #     print(input_text)
+        #     print(omic_ids_list)
         return {
             "input_ids": input_ids,
             "output_ids": output_ids,
