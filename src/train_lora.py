@@ -109,6 +109,7 @@ def setup_dataloaders(args, tokenizer, dna_tokenizer):
     train_config = DatasetConfig(
         max_len=args.max_len,
         max_src_len=args.max_src_len,
+        multimodal_k_tokens=args.multimodal_k_tokens,
         mode=args.mode,
         padding=True,
         input_field='input',
@@ -125,7 +126,6 @@ def setup_dataloaders(args, tokenizer, dna_tokenizer):
         read_nums=args.read_nums,
         shuffle=True,
         seed=42,
-        multimodal_k_tokens=args.multimodal_k_tokens,
         num_workers=args.dataloader_num_workers,
     )
     
@@ -138,6 +138,7 @@ def setup_dataloaders(args, tokenizer, dna_tokenizer):
             max_src_len=args.eval_max_src_len,
             mode=args.mode,
             padding=True,
+            multimodal_k_tokens=args.multimodal_k_tokens,
             input_field='input',
             output_field='output'
         )
@@ -150,7 +151,6 @@ def setup_dataloaders(args, tokenizer, dna_tokenizer):
             read_nums=args.eval_read_nums,
             shuffle=False,
             seed=42,
-            multimodal_k_tokens=args.multimodal_k_tokens,
             num_workers=args.dataloader_num_workers,
         )
     

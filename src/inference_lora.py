@@ -46,6 +46,7 @@ def parse_args():
                         help="Batch size for dataset inference")
     parser.add_argument("--temperature", type=float, default=0.8)
     parser.add_argument("--top_p", type=float, default=0.95)
+    parser.add_argument("--top_k", type=int, default=20)
     parser.add_argument("--device", type=str, default="cuda", choices=["cpu","cuda"])
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--max_samples", type=int, default=None,
@@ -168,6 +169,7 @@ class MultiModalInfer:
                     max_length=args.max_length,
                     temperature=args.temperature,
                     top_p=args.top_p,
+                    top_k=args.top_k,
                     do_sample=True,
                 )
     

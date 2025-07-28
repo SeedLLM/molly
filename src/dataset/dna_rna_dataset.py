@@ -1,5 +1,6 @@
 import os
 import re
+from tkinter import N
 import pandas as pd
 import torch
 import numpy as np
@@ -106,7 +107,7 @@ class OmicsTestDataset(Dataset):
             results = pool.imap(
                 partial(self._preprocess_sample, tokenizer=self.tokenizer),
                 df.to_dict('records'),
-                chunksize=min(100, max(1, len(df) // (self.num_workers * 10)))
+                chunksize=min(1000, max(1, len(df) // (self.num_workers * 10)))
             )
             self.data = []
             with tqdm(total=len(df), desc="Preprocessing", unit="sample") as pbar:
@@ -381,19 +382,22 @@ class DNARNADataset(Dataset):
             df = df.sample(frac=1, random_state=rng).reset_index(drop=True)
 
         print(f"Preprocessing {len(df)} samples with {self.num_workers} workers...")
+        n_samples = len(df)
+        # self.data = [None] * n_samples
+        self.data = []
 
         with Pool(self.num_workers) as pool:
             results = pool.imap(
                 partial(self._preprocess_sample, tokenizer=self.tokenizer),
                 df.to_dict('records'),
-                chunksize=min(100, max(1, len(df) // (self.num_workers * 10)))
+                chunksize=min(1000, max(1, len(df) // (self.num_workers * 10)))
             )
-            self.data = []
             with tqdm(total=len(df), desc="Preprocessing", unit="sample") as pbar:
-                for result in results:
+                for idx, result in enumerate(results):
+                    # self.data[idx] = result
                     self.data.append(result)
                     pbar.update(1)
-        
+        assert all(item is not None for item in self.data), "存在未填充的位置！"
         print(f"Loaded {len(self.data)} samples from parquet file")
     
     def __len__(self) -> int:
