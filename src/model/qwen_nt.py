@@ -25,12 +25,13 @@ class QwenWithNt(nn.Module):
         self.model = AutoModelForCausalLM.from_config(self.text_config)
 
         self.bio_model = AutoModelForMaskedLM.from_config(self.bio_config, trust_remote_code=True)
-        self.multimodal_projector = nn.Sequential(
-            nn.Linear(self.bio_config.hidden_size, self.text_config.hidden_size * 2),
-            nn.GELU(),
-            nn.Linear(self.text_config.hidden_size * 2, self.text_config.hidden_size),
-            nn.LayerNorm(self.text_config.hidden_size)
-        )
+        # self.multimodal_projector = nn.Sequential(
+        #     nn.Linear(self.bio_config.hidden_size, self.text_config.hidden_size * 2),
+        #     nn.GELU(),
+        #     nn.Linear(self.text_config.hidden_size * 2, self.text_config.hidden_size),
+        #     nn.LayerNorm(self.text_config.hidden_size)
+        # )
+        self.multimodal_projector = nn.Linear(self.bio_config.hidden_size, self.text_config.hidden_size)
         self.project_token_num = config.project_token_num
         
         # Special token IDs
@@ -216,8 +217,7 @@ class QwenWithNt(nn.Module):
         output_ids = self.model.generate(
             inputs_embeds=hidden_states,
             attention_mask=attention_mask,
-            max_length=2048,
-            min_length=min_length or 0,
+            max_new_tokens=1024,
             do_sample=do_sample,
             temperature=temperature,
             top_p=top_p,
