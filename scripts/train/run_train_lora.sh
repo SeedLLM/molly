@@ -1,6 +1,6 @@
 enable_list="multimodal model.model.embed_tokens model.model.layers model.lm_head"
 experiment_name="Qwen3_0.6B_NT_sft_0725_exp1"
-output_path="/tos-bjml-ai4agr/lijinzhe/BioMLLM/RES_Model/${experiment_name}"
+output_path="/tos-bjml-ai4agr/chenzihong/BioMLLM/RES_Model/${experiment_name}"
 
 options="--experiment-name $experiment_name \
 --output_dir $output_path \
@@ -46,6 +46,6 @@ options="--experiment-name $experiment_name \
 # --greater_is_better \
 
 deepspeed --include localhost:0,1,2,3 \
-src/train_lora.py \
+src/train.py \
 --deepspeed_config src/configs/zero3_config.json \
 $options
