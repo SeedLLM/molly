@@ -270,15 +270,17 @@ def main():
                        help='List of enabled parameters')
     parser.add_argument('--save_trainable', type=bool, default=True,
                        help='Save trainable parameters only')
+    parser.add_argument('--save_only_model', action='store_true',
+                       help='Save only model parameters')
     
     # Optimizer configuration
     parser.add_argument('--learning_rate', type=float, required=True,
                     help='Learning rate')
-    parser.add_argument('--gradient-accumulation-steps', type=int, default=1,
+    parser.add_argument('--gradient-accumulation-steps', type=int, default=8,
                        help='Gradient accumulation steps')
     parser.add_argument('--warmup_ratio', type=float, default=0.01,
                        help='Warmup ratio')
-    parser.add_argument('--weight-decay', type=float, default=5e-4,
+    parser.add_argument('--weight-decay', type=float, default=1e-2,
                        help='Weight decay')
     parser.add_argument('--eps', type=float, default=1e-8,
                        help='Epsilon for optimizer')
