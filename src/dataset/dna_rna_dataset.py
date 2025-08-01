@@ -107,7 +107,8 @@ class OmicsTestDataset(Dataset):
             results = pool.imap(
                 partial(self._preprocess_sample, tokenizer=self.tokenizer),
                 df.to_dict('records'),
-                chunksize=min(1000, max(1, len(df) // (self.num_workers * 10)))
+                chunksize=2500
+                # chunksize=min(1000, max(1, len(df) // (self.num_workers * 10)))
             )
             self.data = []
             with tqdm(total=len(df), desc="Preprocessing", unit="sample") as pbar:
@@ -383,19 +384,20 @@ class DNARNADataset(Dataset):
 
         print(f"Preprocessing {len(df)} samples with {self.num_workers} workers...")
         n_samples = len(df)
-        # self.data = [None] * n_samples
-        self.data = []
+        self.data = [None] * n_samples
+        # self.data = []
 
         with Pool(self.num_workers) as pool:
-            results = pool.imap(
+            results = pool.map(
                 partial(self._preprocess_sample, tokenizer=self.tokenizer),
                 df.to_dict('records'),
+                # chunksize=2500
                 chunksize=min(1000, max(1, len(df) // (self.num_workers * 10)))
             )
             with tqdm(total=len(df), desc="Preprocessing", unit="sample") as pbar:
                 for idx, result in enumerate(results):
-                    # self.data[idx] = result
-                    self.data.append(result)
+                    self.data[idx] = result
+                    # self.data.append(result)
                     pbar.update(1)
         assert all(item is not None for item in self.data), "存在未填充的位置！"
         print(f"Loaded {len(self.data)} samples from parquet file")
@@ -567,6 +569,7 @@ class DNARNADataset(Dataset):
         
         # Truncate if necessary
         if len(input_ids) > self.max_len:
+            print(f"Truncating input_ids from {len(input_ids)} to {self.max_len-1}")
             input_ids = input_ids[:self.max_len-1] + [self.eos_id]
             labels = labels[:self.max_len-1] + [self.eos_id]
         
