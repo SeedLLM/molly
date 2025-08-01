@@ -268,17 +268,19 @@ class OmicsTestDataset(Dataset):
             labels = labels[:self.max_len-10] + labels[-10:]
         
         attention_mask = [1] * len(input_ids)
-
+        omic_start_pos_list = sample["omic_start_pos_list"]
         # Add padding if needed
         if self.padding and (pad_len := self.max_len - len(input_ids)) > 0:
             input_ids[:0] = [self.pad_id] * pad_len
             labels[:0] = [-100] * pad_len
             attention_mask[:0] = [0] * pad_len
+            for i in range(len(omic_start_pos_list)):
+                omic_start_pos_list[i] += pad_len
         # Convert to tensors
         return {
             "input_ids": torch.LongTensor(input_ids),
             "omic_ids": torch.stack(sample["omic_ids_list"]),
-            "omic_start_pos_list": sample["omic_start_pos_list"],
+            "omic_start_pos_list": omic_start_pos_list,
             "labels": torch.LongTensor(labels),
             "attention_mask": torch.LongTensor(attention_mask),
             "task": sample["task"],
