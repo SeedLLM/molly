@@ -4,7 +4,7 @@ from typing import Optional, List, Dict, Union, Tuple
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from transformers import AutoTokenizer, AutoModelForCausalLM, AutoModel, AutoModelForMaskedLM
+from transformers import AutoModelForCausalLM, AutoModelForMaskedLM
 from transformers.modeling_outputs import CausalLMOutputWithPast
 
 
@@ -12,14 +12,6 @@ from transformers.modeling_outputs import CausalLMOutputWithPast
 class QwenWithNt(nn.Module):
     def __init__(self, config):
         super().__init__()
-
-        # import torch.nn.init as init
-
-        # # 临时替换 init 方法为 no-op, 调试的时候添加，用于加速构建
-        # init.kaiming_uniform_ = lambda *args, **kwargs: None
-        # init.uniform_ = lambda *args, **kwargs: None
-        # init.normal_ = lambda *args, **kwargs: None
-
         self.text_config = config.text_config
         self.bio_config = config.bio_config
         self.model = AutoModelForCausalLM.from_config(self.text_config)
@@ -35,9 +27,9 @@ class QwenWithNt(nn.Module):
         self.project_token_num = config.project_token_num
         
         # Special token IDs
-        self.dna_start_token_id = None  # Will be set during initialization
-        self.dna_end_token_id = None    # Will be set during initialization
-        self.dna_pad_token_id = None    # Will be set during initialization
+        self.dna_start_token_id = None
+        self.dna_end_token_id = None  
+        self.dna_pad_token_id = None  
 
     def set_special_tokens(self, tokenizer):
         """Set special token IDs from tokenizer"""
@@ -131,22 +123,10 @@ class QwenWithNt(nn.Module):
         if torch.distributed.is_initialized() and torch.distributed.get_world_size() > 1:
             use_cache = False
 
-        # print(f"Input IDs shape: {input_ids.shape if input_ids is not None else 'None'}")
-        # print(f"Omic IDs shape: {omic_ids.shape if omic_ids is not None else 'None'}")
-        # print(f"Omic Start Positions: {omic_start_pos_list if omic_start_pos_list is not None else 'None'}")
-
-
         # Get token embeddings
         hidden_states = self.model.get_input_embeddings()(input_ids)
 
-        # Auto infer start positions if not provided
         if omic_ids is not None:
-            if omic_start_pos_list is None:
-                omic_start_pos_list = []
-                for ids in input_ids:
-                    positions = (ids == self.dna_start_token_id).nonzero(as_tuple=True)[0].tolist()
-                    omic_start_pos_list.append(positions)
-
             # Sanity check
             for i in range(len(omic_ids)):
                 assert len(omic_ids[i]) == len(omic_start_pos_list[i]), \
