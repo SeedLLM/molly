@@ -51,6 +51,7 @@ def parse_args():
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--max_samples", type=int, default=None,
                         help="Maximum number of samples to process (None=all)")
+    parser.add_argument("--repetition_penalty", type=float, default=1.0)
     parser.add_argument("--json_file", type=str)
     return parser.parse_args()
 
@@ -67,7 +68,7 @@ class MultiModalInfer:
             torch.cuda.manual_seed_all(args.seed)
 
         # ‑- Device --------------------------------------------------------------
-        self.device = torch.device("cuda:1" if args.device == "cuda" and torch.cuda.is_available() else "cpu")
+        self.device = torch.device("cuda:0" if args.device == "cuda" and torch.cuda.is_available() else "cpu")
 
         # ‑- Tokenisers ----------------------------------------------------------
         print("Loading tokenizers…")
@@ -126,7 +127,16 @@ class MultiModalInfer:
                 self.model.multimodal_projector.load_state_dict(
                     torch.load(projector_path, map_location="cpu")
                 )
-                print("Multimodal projector loaded.")       
+                print("Multimodal projector loaded.")      
+
+        else:
+            print("LoRA mode not enabled, loading base model...")
+            train_model_path = os.path.join(args.trained_model_path, "pytorch_model.bin")
+            if os.path.exists(train_model_path):
+                self.model.load_state_dict(
+                    torch.load(train_model_path, map_location="cpu")
+                )
+                print("Multimodal loaded.")    
             
         # Move model to device and set to evaluation mode
         self.model = self.model.to(torch.bfloat16).to(self.device)
@@ -171,6 +181,7 @@ class MultiModalInfer:
                     top_p=args.top_p,
                     top_k=args.top_k,
                     do_sample=True,
+                    repetition_penalty=args.repetition_penalty
                 )
     
             decoded = self.text_tokenizer.batch_decode(outputs, skip_special_tokens=True)

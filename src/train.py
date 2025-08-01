@@ -272,6 +272,8 @@ def main():
                        help='Save trainable parameters only')
     parser.add_argument('--save_only_model', action='store_true',
                        help='Save only model parameters')
+    parser.add_argument('--if_train_llm', type=bool, default=True,
+                       help='If train llm')
     
     # Optimizer configuration
     parser.add_argument('--learning_rate', type=float, required=True,
