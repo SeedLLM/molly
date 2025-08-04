@@ -14,7 +14,7 @@ from dataclasses import dataclass
 
 @dataclass
 class DatasetConfig:
-    """DNARNADataset所需的配置类"""
+    """OmicsDataset所需的配置类"""
     max_len: int = 1024
     max_src_len: int = 1024
     mode: str = 'sft'
@@ -308,7 +308,7 @@ class OmicsTestDataset(Dataset):
         return encoding['input_ids'].squeeze(0)
     
 
-class DNARNADataset(Dataset):
+class OmicsDataset(Dataset):
     """Dataset for DNA/RNA data from Parquet, formatted for Bio-LLM."""
 
     def __init__(
@@ -571,7 +571,7 @@ class DNARNADataset(Dataset):
         
         # Truncate if necessary
         if len(input_ids) > self.max_len:
-            print(f"Truncating input_ids from {len(input_ids)} to {self.max_len-1}")
+            # print(f"Truncating input_ids from {len(input_ids)} to {self.max_len-1}")
             input_ids = input_ids[:self.max_len-1] + [self.eos_id]
             labels = labels[:self.max_len-1] + [self.eos_id]
         

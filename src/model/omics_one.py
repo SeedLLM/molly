@@ -9,7 +9,7 @@ from transformers.modeling_outputs import CausalLMOutputWithPast
 
 
 
-class QwenWithNt(nn.Module):
+class OmicsOne(nn.Module):
     def __init__(self, config):
         super().__init__()
         self.text_config = config.text_config
@@ -17,12 +17,6 @@ class QwenWithNt(nn.Module):
         self.model = AutoModelForCausalLM.from_config(self.text_config)
 
         self.bio_model = AutoModelForMaskedLM.from_config(self.bio_config, trust_remote_code=True)
-        # self.multimodal_projector = nn.Sequential(
-        #     nn.Linear(self.bio_config.hidden_size, self.text_config.hidden_size * 2),
-        #     nn.GELU(),
-        #     nn.Linear(self.text_config.hidden_size * 2, self.text_config.hidden_size),
-        #     nn.LayerNorm(self.text_config.hidden_size)
-        # )
         self.multimodal_projector = nn.Linear(self.bio_config.hidden_size, self.text_config.hidden_size)
         self.project_token_num = config.project_token_num
         

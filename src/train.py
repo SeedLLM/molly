@@ -1,29 +1,18 @@
-"""
-Train Qwen + Nucleotide Transformer multimodal model
-"""
-import os
-import gc
 from datetime import datetime
 from argparse import ArgumentParser
-from typing import Optional, Union, List
-import json
 import logging
 import traceback
-import sys
-import math
 
-import swanlab
 import torch
 import torch.distributed as dist
 from transformers import AutoTokenizer, AutoModelForCausalLM, AutoModelForMaskedLM
 import deepspeed
 
 from trainer import MultimodalTrainer
-from model import QwenWithBert, get_qwen_bert_config
-from dataset.dna_rna_dataset import DNARNADataset, qwen_dna_collate_fn, DatasetConfig
-from utils import print_rank_0, refresh_config, set_up_trainable_param, init_swanlab_rank_0, swanlab_log_rank_0, pre_train_lora
+from dataset.omics_dataset import OmicsDataset, qwen_dna_collate_fn, DatasetConfig
+from utils import print_rank_0, set_up_trainable_param, init_swanlab_rank_0, pre_train_lora
 
-from model import QwenWithNt, get_qwen_nt_config
+from model import OmicsOne, get_qwen_nt_config
 
 from transformers import set_seed
 
@@ -52,7 +41,7 @@ def setup_model_and_optimizer(args, tokenizer):
     model_config.project_token_num = args.multimodal_k_tokens
 
     with torch.device("cpu"):
-        my_model = QwenWithNt(model_config)
+        my_model = OmicsOne(model_config)
     my_model.set_special_tokens(tokenizer)
 
     if args.load_pretrained:
@@ -91,7 +80,7 @@ def setup_model_and_optimizer(args, tokenizer):
 
 def setup_dataloaders(args, tokenizer, dna_tokenizer):
     """
-    Setup training and evaluation dataloaders using DNARNADataset.
+    Setup training and evaluation dataloaders using OmicsDataset.
     """
     print_rank_0("-------------------init dataset-----------------------")
     
@@ -118,7 +107,7 @@ def setup_dataloaders(args, tokenizer, dna_tokenizer):
     
     # 创建训练数据集
     print_rank_0(f"Loading training dataset from {args.train_dataset_path}")
-    train_dataset = DNARNADataset(
+    train_dataset = OmicsDataset(
         parquet_file=args.train_dataset_path,
         tokenizer=tokenizer,
         dataset_config=train_config,
@@ -143,7 +132,7 @@ def setup_dataloaders(args, tokenizer, dna_tokenizer):
             output_field='output'
         )
         
-        eval_dataset = DNARNADataset(
+        eval_dataset = OmicsDataset(
             parquet_file=args.eval_dataset_path,
             tokenizer=tokenizer,
             dataset_config=eval_config,

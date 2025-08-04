@@ -45,7 +45,7 @@ options="--experiment-name $experiment_name \
 # --save_safetensors \
 # --greater_is_better \
 
-deepspeed --include localhost:0,1,2,3 \
+deepspeed --include localhost:0 \
 src/train.py \
 --deepspeed_config src/configs/zero3_config.json \
 $options

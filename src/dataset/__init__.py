@@ -1,7 +1,7 @@
-from .dna_rna_dataset import DNARNADataset, qwen_dna_collate_fn, DatasetConfig, OmicsTestDataset
+from .omics_dataset import OmicsDataset, qwen_dna_collate_fn, DatasetConfig, OmicsTestDataset
 
 __all__ = [
-    "DNARNADataset",
+    "OmicsDataset",
     "qwen_dna_collate_fn",
     "DatasetConfig",
     "OmicsTestDataset",
