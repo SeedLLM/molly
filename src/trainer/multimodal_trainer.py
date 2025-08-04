@@ -76,9 +76,6 @@ class MultimodalTrainer(Trainer):
         self.args = args
 
     def save_model(self, output_dir=None, _internal_call=False):
-        """
-        重写保存逻辑，确保 LoRA 权重被正确保存。
-        """
         output_dir = output_dir if output_dir is not None else self.args.output_dir
         os.makedirs(output_dir, exist_ok=True)
 
@@ -86,8 +83,12 @@ class MultimodalTrainer(Trainer):
             self.model.model.save_pretrained(output_dir)
             print_rank_0(f"LoRA adapter saved to {output_dir}")
 
-            projector_path = os.path.join(output_dir, "multimodal_projector.bin")
-            torch.save(self.model.multimodal_projector.state_dict(), projector_path)
-            print_rank_0(f"Multimodal projector saved to {projector_path}")
+            dna_rna_projector_path = os.path.join(output_dir, "dna_rna_projector.bin")
+            torch.save(self.model.dna_rna_projector.state_dict(), dna_rna_projector_path)
+            print_rank_0(f"Multimodal projector saved to {dna_rna_projector_path}")
+
+            protein_projector_path = os.path.join(output_dir, "protein_projector.bin")
+            torch.save(self.model.protein_projector.state_dict(), protein_projector_path)
+            print_rank_0(f"Protein projector saved to {protein_projector_path}")
         else:
             super().save_model(output_dir, _internal_call)

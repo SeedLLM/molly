@@ -264,11 +264,12 @@ import torch.nn as nn
 from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
 
 def pre_train_lora(model, args):
-    """
-    Pre-train lora parameters.
-    """
-    for param in model.bio_model.parameters():
+    for param in model.dna_rna_model.parameters():
         param.requires_grad = False
+    
+    for param in model.protein_model.parameters():
+        param.requires_grad = False
+
     target_modules = []
     module_names = set()
     for name, module in model.model.named_modules():
@@ -310,5 +311,7 @@ def pre_train_lora(model, args):
     model.model.print_trainable_parameters()
 
     for param in model.dna_rna_projector.parameters():
+        param.requires_grad = True
+    for param in model.protein_projector.parameters():
         param.requires_grad = True
     return model
