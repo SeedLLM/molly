@@ -30,15 +30,15 @@ def setup_tokenizers(args):
                   "<|rna_start|>", "<|rna_pad|>", "<|rna_end|>"]
     tokenizer.add_special_tokens({"additional_special_tokens": new_tokens})
     
-    dna_tokenizer = AutoTokenizer.from_pretrained(args.bio_model_path, trust_remote_code=True)
+    dna_rna_tokenizer = AutoTokenizer.from_pretrained(args.dna_rna_model_path, trust_remote_code=True)
     
-    return tokenizer, dna_tokenizer
+    return tokenizer, dna_rna_tokenizer
 
 def setup_model_and_optimizer(args, tokenizer):
     print_rank_0("-------------------init model-------------------------")
 
-    model_config = get_qwen_nt_config(args.text_model_path, args.bio_model_path)
-    model_config.project_token_num = args.multimodal_k_tokens
+    model_config = get_qwen_nt_config(args.text_model_path, args.dna_rna_model_path)
+    model_config.project_token_num = args.dna_rna_k_tokens
 
     with torch.device("cpu"):
         my_model = OmicsOne(model_config)
@@ -55,7 +55,7 @@ def setup_model_and_optimizer(args, tokenizer):
         my_model.model = qwen_model
 
         nt_model = AutoModelForMaskedLM.from_pretrained(
-            args.bio_model_path,
+            args.dna_rna_model_path,
             torch_dtype=torch.bfloat16,
             trust_remote_code=True,
             low_cpu_mem_usage=True,
@@ -78,7 +78,7 @@ def setup_model_and_optimizer(args, tokenizer):
 
     return my_model, model_config
 
-def setup_dataloaders(args, tokenizer, dna_tokenizer):
+def setup_dataloaders(args, tokenizer, dna_rna_tokenizer):
     """
     Setup training and evaluation dataloaders using OmicsDataset.
     """
@@ -98,7 +98,7 @@ def setup_dataloaders(args, tokenizer, dna_tokenizer):
     train_config = DatasetConfig(
         max_len=args.max_len,
         max_src_len=args.max_src_len,
-        multimodal_k_tokens=args.multimodal_k_tokens,
+        dna_rna_k_tokens=args.dna_rna_k_tokens,
         mode=args.mode,
         padding=True,
         input_field='input',
@@ -111,7 +111,7 @@ def setup_dataloaders(args, tokenizer, dna_tokenizer):
         parquet_file=args.train_dataset_path,
         tokenizer=tokenizer,
         dataset_config=train_config,
-        multimodal_tokenizer=dna_tokenizer,
+        dna_rna_tokenizer=dna_rna_tokenizer,
         read_nums=args.read_nums,
         shuffle=True,
         seed=42,
@@ -127,7 +127,7 @@ def setup_dataloaders(args, tokenizer, dna_tokenizer):
             max_src_len=args.eval_max_src_len,
             mode=args.mode,
             padding=True,
-            multimodal_k_tokens=args.multimodal_k_tokens,
+            dna_rna_k_tokens=args.dna_rna_k_tokens,
             input_field='input',
             output_field='output'
         )
@@ -136,7 +136,7 @@ def setup_dataloaders(args, tokenizer, dna_tokenizer):
             parquet_file=args.eval_dataset_path,
             tokenizer=tokenizer,
             dataset_config=eval_config,
-            multimodal_tokenizer=dna_tokenizer,
+            dna_rna_tokenizer=dna_rna_tokenizer,
             read_nums=args.eval_read_nums,
             shuffle=False,
             seed=42,
@@ -176,10 +176,12 @@ def main():
     # Model
     parser.add_argument('--text-model-path', type=str, required=True,
                        help='Path to the Qwen model')
-    parser.add_argument('--bio-model-path', type=str, required=True,
+    parser.add_argument('--dna-rna-model-path', type=str, required=True,
                        help='Path to the DNA-BERT model')
-    parser.add_argument('--multimodal-k-tokens', type=int, default=64,
+    parser.add_argument('--dna-rna-k-tokens', type=int, default=64,
                        help='Number of tokens for DNA sequence projection')
+    parser.add_argument('--protein-model-path', type=str, default=None,
+                    help='Path to the protein encoder checkpoint')
     parser.add_argument('--device', type=str, default="cuda")
     parser.add_argument('--load-pretrained', action='store_true', default=True,
                        help='Load pretrained parameters for both models')
@@ -328,13 +330,13 @@ def main():
                 init_swanlab_rank_0(args, experiment_suffix=current_time)
         
         # Setup tokenizers
-        tokenizer, dna_tokenizer = setup_tokenizers(args)
+        tokenizer, dna_rna_tokenizer = setup_tokenizers(args)
         
         # Setup model and optimizer
         model, model_config = setup_model_and_optimizer(args, tokenizer)
         
         # Get dataloaders and convert to datasets for Transformers Trainer
-        train_dataset, eval_dataset = setup_dataloaders(args, tokenizer, dna_tokenizer)
+        train_dataset, eval_dataset = setup_dataloaders(args, tokenizer, dna_rna_tokenizer)
         
         # Apply parameter freezing or pre-train lora based on args.use-lora
         if args.use_lora:
@@ -350,8 +352,8 @@ def main():
         # 将所有参数打印出来以进行调试
         if args.global_rank == 0:
             print_rank_0("-------- Training Configuration --------")
-            print_rank_0(f"Model: {args.text_model_path} + {args.bio_model_path}")
-            print_rank_0(f"Multimodal tokens: {args.multimodal_k_tokens}")
+            print_rank_0(f"Model: {args.text_model_path} + {args.dna_rna_model_path}")
+            print_rank_0(f"Multimodal tokens: {args.dna_rna_k_tokens}")
             print_rank_0(f"Batch size: {args.per_device_train_batch_size}")
             print_rank_0(f"Learning rate: {args.learning_rate}")
             print_rank_0(f"Dataset: {args.train_dataset_path}")

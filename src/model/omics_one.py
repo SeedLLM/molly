@@ -1,5 +1,5 @@
 import time
-from typing import Optional, List, Dict, Union, Tuple
+from typing import Optional, List, Union, Tuple
 
 import torch
 import torch.nn as nn
@@ -16,8 +16,8 @@ class OmicsOne(nn.Module):
         self.bio_config = config.bio_config
         self.model = AutoModelForCausalLM.from_config(self.text_config)
 
-        self.bio_model = AutoModelForMaskedLM.from_config(self.bio_config, trust_remote_code=True)
-        self.multimodal_projector = nn.Linear(self.bio_config.hidden_size, self.text_config.hidden_size)
+        self.dna_rna_model = AutoModelForMaskedLM.from_config(self.bio_config, trust_remote_code=True)
+        self.dna_rna_projector = nn.Linear(self.bio_config.hidden_size, self.text_config.hidden_size)
         self.project_token_num = config.project_token_num
         
         # Special token IDs
@@ -71,8 +71,7 @@ class OmicsOne(nn.Module):
         # 将所有 DNA 序列堆叠成一个张量：[N_dna, L_dna]
         padded_dna = torch.stack(flat_dna_ids, dim=0)
 
-        # 使用 BERT/BioBERT 获取 DNA 表征
-        dna_outputs = self.bio_model(
+        dna_outputs = self.dna_rna_model(
             padded_dna,
             attention_mask=(padded_dna != 1).long(),  # 1 是 padding token
             encoder_attention_mask=(padded_dna != 1).long(),
@@ -82,7 +81,7 @@ class OmicsOne(nn.Module):
         dna_embeddings = dna_outputs['hidden_states'][-1] # 形状：[N_dna, L_dna, H_bio]
 
         # 映射到主模型的 embedding 空间：[N_dna, L_dna, H_text]
-        proj_embeddings = self.multimodal_projector(dna_embeddings)
+        proj_embeddings = self.dna_rna_projector(dna_embeddings)
 
         # 注入到 hidden_states 中对应位置
         for i, (b, start_pos, length) in enumerate(mapping):

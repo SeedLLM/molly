@@ -22,7 +22,7 @@ class DatasetConfig:
     padding: bool = True
     input_field: str = 'input'
     output_field: str = 'output'
-    multimodal_k_tokens: int = 128
+    dna_rna_k_tokens: int = 128
     type: str = None
 
 
@@ -33,7 +33,7 @@ class OmicsTestDataset(Dataset):
         parquet_file: str,
         tokenizer,
         dataset_config,
-        multimodal_tokenizer=None,
+        dna_rna_tokenizer=None,
         read_nums=None,
         shuffle=False,
         seed=42,
@@ -48,7 +48,7 @@ class OmicsTestDataset(Dataset):
             parquet_file: Path to the Parquet file.
             tokenizer: Text tokenizer for processing text parts.
             dataset_config: Configuration for the dataset.
-            multimodal_tokenizer: Tokenizer for DNA/RNA sequences.
+            dna_rna_tokenizer: Tokenizer for DNA/RNA sequences.
             read_nums: Maximum number of samples to read.
             shuffle: Whether to shuffle the dataset.
             seed: Random seed for shuffling.
@@ -60,7 +60,7 @@ class OmicsTestDataset(Dataset):
 
         self.parquet_file = parquet_file
         self.tokenizer = tokenizer
-        self.dna_tokenizer = multimodal_tokenizer
+        self.dna_tokenizer = dna_rna_tokenizer
         self.dataset_config = dataset_config
         self.shuffle = shuffle
         self.seed = seed
@@ -69,7 +69,7 @@ class OmicsTestDataset(Dataset):
         # Configuration parameters
         self.max_len = dataset_config.max_len
         self.max_src_len = dataset_config.max_src_len
-        self.project_token_num = dataset_config.multimodal_k_tokens
+        self.project_token_num = dataset_config.dna_rna_k_tokens
         self.mode = dataset_config.mode
         self.cal_metric_pos = dataset_config.cal_metric_pos
         self.padding = dataset_config.padding
@@ -316,7 +316,7 @@ class OmicsDataset(Dataset):
         parquet_file: str,
         tokenizer,
         dataset_config,
-        multimodal_tokenizer=None,
+        dna_rna_tokenizer=None,
         read_nums=None,
         shuffle=False,
         seed=42,
@@ -331,7 +331,7 @@ class OmicsDataset(Dataset):
             parquet_file: Path to the Parquet file.
             tokenizer: Text tokenizer for processing text parts.
             dataset_config: Configuration for the dataset.
-            multimodal_tokenizer: Tokenizer for DNA/RNA sequences.
+            dna_rna_tokenizer: Tokenizer for DNA/RNA sequences.
             read_nums: Maximum number of samples to read.
             shuffle: Whether to shuffle the dataset.
             seed: Random seed for shuffling.
@@ -343,7 +343,7 @@ class OmicsDataset(Dataset):
 
         self.parquet_file = parquet_file
         self.tokenizer = tokenizer
-        self.dna_tokenizer = multimodal_tokenizer
+        self.dna_tokenizer = dna_rna_tokenizer
         self.dataset_config = dataset_config
         self.shuffle = shuffle
         self.seed = seed
@@ -352,7 +352,7 @@ class OmicsDataset(Dataset):
         # Configuration parameters
         self.max_len = dataset_config.max_len
         self.max_src_len = dataset_config.max_src_len
-        self.project_token_num = dataset_config.multimodal_k_tokens
+        self.project_token_num = dataset_config.dna_rna_k_tokens
         self.mode = dataset_config.mode
         self.cal_metric_pos = dataset_config.cal_metric_pos
         self.padding = dataset_config.padding

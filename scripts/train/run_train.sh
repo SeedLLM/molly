@@ -6,8 +6,9 @@ options="--experiment-name $experiment_name \
 --output_dir $output_path \
 --use-lora \
 --text-model-path /tos-bjml-ai4agr/lijinzhe/BioMLLM/Qwen3-0.6B \
---bio-model-path /tos-bjml-ai4agr/lijinzhe/BioModel/nucleotide-transformer/  \
---multimodal-k-tokens 128 \
+--dna-rna-model-path /tos-bjml-ai4agr/lijinzhe/BioModel/nucleotide-transformer/  \
+--dna-rna-k-tokens 128 \
+--protein-model-path /tos-bjml-ai4agr/lijinzhe/BioMLLM/esm2_t33_650M_UR50D/ \
 --device cuda \
 --load-pretrained \
 --freeze-nt \

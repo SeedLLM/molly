@@ -309,6 +309,6 @@ def pre_train_lora(model, args):
     model.model = get_peft_model(model.model, lora_config)
     model.model.print_trainable_parameters()
 
-    for param in model.multimodal_projector.parameters():
+    for param in model.dna_rna_projector.parameters():
         param.requires_grad = True
     return model
