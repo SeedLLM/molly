@@ -9,10 +9,11 @@ options="--experiment-name $experiment_name \
 --dna-rna-model-path /tos-bjml-ai4agr/lijinzhe/BioModel/nucleotide-transformer/  \
 --dna-rna-k-tokens 128 \
 --protein-model-path /tos-bjml-ai4agr/lijinzhe/BioMLLM/esm2_t33_650M_UR50D/ \
+--protein-k-tokens 128 \
 --device cuda \
 --load-pretrained \
---freeze-nt \
---train-dataset-path /tos-bjml-ai4agr/lijinzhe/dataset/BioMLLM/rewritten_8k/train_dna_rna.parquet \
+--freeze-bio \
+--train-dataset-path /tos-bjml-ai4agr/lijinzhe/dataset/BioMLLM/TargetTask0729/protein/train_target_task_protein.parquet \
 --eval-dataset-path /tos-bjml-ai4agr/lijinzhe/dataset/BioMLLM/rewritten_8k/valid_dna_rna.parquet \
 --max-len 1024 \
 --max-src-len 1024 \
@@ -22,7 +23,7 @@ options="--experiment-name $experiment_name \
 --mode sft \
 --per_device_train_batch_size 2 \
 --per_device_eval_batch_size 4 \
---read-nums 2000 \
+--read-nums 1000 \
 --eval-read-nums 300 \
 --num_train_epochs 3 \
 --learning_rate 1.0e-5 \
