@@ -511,7 +511,6 @@ def qwen_omics_collate_fn_inference(batch):
 
     return {
         "input_ids": input_ids,
-        "labels": labels,
         "attention_mask": attention_mask,
         "omic_ids": omic_ids,
         "omic_start_pos_list": omic_info_lists,
