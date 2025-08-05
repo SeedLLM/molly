@@ -1,37 +1,36 @@
-import torch
-from typing import Dict
-import os
-import json
-import numpy as np
-from transformers import Trainer, TrainingArguments
-from transformers import EarlyStoppingCallback
-from tqdm import tqdm
 import inspect
+import os
+
+import torch
 from peft import PeftModel
+from transformers import EarlyStoppingCallback, Trainer, TrainingArguments
 
 from utils.tools import print_rank_0
 
 
-class MultimodalTrainer(Trainer):
+class OmicsTrainer(Trainer):
     """
     Trainer class specifically designed for multimodal training with Qwen and DNABert.
     Inherits from the transformers Trainer class and adds multimodal-specific functionality.
     """
-    def __init__(self, 
-                 model=None,
-                 args=None,
-                 data_collator=None,
-                 train_dataset=None,
-                 eval_dataset=None,
-                 tokenizer=None,
-                 model_init=None,
-                 compute_metrics=None,
-                 optimizers=(None, None),
-                 preprocess_logits_for_metrics=None,
-                 **kwargs):
+
+    def __init__(
+        self,
+        model=None,
+        args=None,
+        data_collator=None,
+        train_dataset=None,
+        eval_dataset=None,
+        tokenizer=None,
+        model_init=None,
+        compute_metrics=None,
+        optimizers=(None, None),
+        preprocess_logits_for_metrics=None,
+        **kwargs,
+    ):
         """
         初始化MultimodalTrainer
-        
+
         Args:
             model: 要训练的模型
             args: 训练参数
@@ -44,15 +43,19 @@ class MultimodalTrainer(Trainer):
             optimizers: 优化器和调度器元组
             preprocess_logits_for_metrics: 预处理logits的函数
         """
-        
+
         # 保存tokenizer作为属性以保持向后兼容
         self.tokenizer = tokenizer
-        
+
         # 只保留TrainingArguments支持的参数
         training_args_params = inspect.signature(TrainingArguments).parameters
-        training_args_dict = {k: v for k, v in vars(args).items() if k in training_args_params and v is not None}
+        training_args_dict = {
+            k: v
+            for k, v in vars(args).items()
+            if k in training_args_params and v is not None
+        }
         training_args = TrainingArguments(**training_args_dict)
-        
+
         args = training_args
 
         super().__init__(
@@ -66,12 +69,12 @@ class MultimodalTrainer(Trainer):
             compute_metrics=compute_metrics,
             callbacks=[
                 EarlyStoppingCallback(
-                    early_stopping_patience=getattr(args, 'early_stopping_patience', 3),
+                    early_stopping_patience=getattr(args, "early_stopping_patience", 3),
                 )
             ],
             optimizers=optimizers,
             preprocess_logits_for_metrics=preprocess_logits_for_metrics,
-            **kwargs
+            **kwargs,
         )
         self.args = args
 
@@ -84,11 +87,15 @@ class MultimodalTrainer(Trainer):
             print_rank_0(f"LoRA adapter saved to {output_dir}")
 
             dna_rna_projector_path = os.path.join(output_dir, "dna_rna_projector.bin")
-            torch.save(self.model.dna_rna_projector.state_dict(), dna_rna_projector_path)
+            torch.save(
+                self.model.dna_rna_projector.state_dict(), dna_rna_projector_path
+            )
             print_rank_0(f"Multimodal projector saved to {dna_rna_projector_path}")
 
             protein_projector_path = os.path.join(output_dir, "protein_projector.bin")
-            torch.save(self.model.protein_projector.state_dict(), protein_projector_path)
+            torch.save(
+                self.model.protein_projector.state_dict(), protein_projector_path
+            )
             print_rank_0(f"Protein projector saved to {protein_projector_path}")
         else:
             super().save_model(output_dir, _internal_call)
