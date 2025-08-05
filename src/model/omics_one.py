@@ -1,11 +1,10 @@
-from typing import Optional, List, Union, Tuple
+from typing import List, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from transformers import AutoModelForCausalLM, AutoModelForMaskedLM
 from transformers.modeling_outputs import CausalLMOutputWithPast
-
 
 
 class OmicsOne(nn.Module):
@@ -16,15 +15,22 @@ class OmicsOne(nn.Module):
         self.protein_config = config.protein_config
 
         self.model = AutoModelForCausalLM.from_config(self.text_config)
-        
-        self.dna_rna_model = AutoModelForMaskedLM.from_config(self.dna_rna_config, trust_remote_code=True)
-        self.dna_rna_projector = nn.Linear(self.dna_rna_config.hidden_size, self.text_config.hidden_size)
+
+        self.dna_rna_model = AutoModelForMaskedLM.from_config(
+            self.dna_rna_config, trust_remote_code=True
+        )
+        self.dna_rna_projector = nn.Linear(
+            self.dna_rna_config.hidden_size, self.text_config.hidden_size
+        )
         self.dna_rna_project_token_num = config.dna_rna_project_token_num
 
-        self.protein_model = AutoModelForMaskedLM.from_config(self.protein_config, trust_remote_code=True)
-        self.protein_projector = nn.Linear(self.protein_config.hidden_size, self.text_config.hidden_size)
+        self.protein_model = AutoModelForMaskedLM.from_config(
+            self.protein_config, trust_remote_code=True
+        )
+        self.protein_projector = nn.Linear(
+            self.protein_config.hidden_size, self.text_config.hidden_size
+        )
         self.protein_project_token_num = config.protein_project_token_num
-
 
     def set_special_tokens(self, tokenizer):
         """Set special token IDs from tokenizer"""
@@ -34,7 +40,9 @@ class OmicsOne(nn.Module):
         self.rna_start_token_id = tokenizer.convert_tokens_to_ids("<|rna_start|>")
         self.rna_end_token_id = tokenizer.convert_tokens_to_ids("<|rna_end|>")
         self.rna_pad_token_id = tokenizer.convert_tokens_to_ids("<|rna_pad|>")
-        self.protein_start_token_id = tokenizer.convert_tokens_to_ids("<|protein_start|>")
+        self.protein_start_token_id = tokenizer.convert_tokens_to_ids(
+            "<|protein_start|>"
+        )
         self.protein_end_token_id = tokenizer.convert_tokens_to_ids("<|protein_end|>")
         self.protein_pad_token_id = tokenizer.convert_tokens_to_ids("<|protein_pad|>")
 
@@ -43,15 +51,14 @@ class OmicsOne(nn.Module):
         hidden_states: torch.Tensor,
         omic_ids_list: List[List[torch.LongTensor]],
         omic_info_list: List[dict],
-        device: torch.device
+        device: torch.device,
     ) -> torch.Tensor:
-
         def _inject_omic(
             omic_ids: List[torch.LongTensor],
             omic_mappings: List[Tuple[int, int, int]],
             backbone_model: nn.Module,
             projector: nn.Module,
-            max_tokens: int
+            max_tokens: int,
         ):
             """
             将一类 omic 序列（DNA/RNA 或蛋白质）统一处理并写回 hidden_states
@@ -60,20 +67,34 @@ class OmicsOne(nn.Module):
                 return
             padded = torch.stack(omic_ids, dim=0)
             mask = (padded != 1).long()
-            out = backbone_model(
-                padded,
-                attention_mask=mask,
-                encoder_attention_mask=mask,
-                output_hidden_states=True,
-                return_dict=True
-            )
-            emb = projector(out['hidden_states'][-1])
+            assert (
+                padded < backbone_model.config.vocab_size
+            ).all(), f"out-of-range token: {padded[padded >= backbone_model.config.vocab_size]}"
+            try:
+                if backbone_model == self.dna_rna_model:
+                    out = backbone_model(
+                        padded,
+                        attention_mask=mask,
+                        encoder_attention_mask=mask,
+                        output_hidden_states=True,
+                        return_dict=True,
+                    )
+                elif backbone_model == self.protein_model:
+                    out = backbone_model(
+                        padded,
+                        attention_mask=mask,
+                        output_hidden_states=True,
+                        return_dict=True,
+                    )
+            except Exception as e:
+                raise RuntimeError(f"Error processing omic sequences: {e}")
+            emb = projector(out["hidden_states"][-1])
 
             for idx, (b, start_pos, _) in enumerate(omic_mappings):
                 if start_pos == -1:
                     continue
                 k = min(max_tokens, emb.size(1))
-                hidden_states[b, start_pos + 1: start_pos + 1 + k] = emb[idx, :k]
+                hidden_states[b, start_pos + 1 : start_pos + 1 + k] = emb[idx, :k]
 
         batch_size = hidden_states.shape[0]
 
@@ -82,24 +103,26 @@ class OmicsOne(nn.Module):
 
         for b in range(batch_size):
             for omic_id, info in zip(omic_ids_list[b], omic_info_list[b]):
-                omic_type = info['type']
-                start_pos = info['start']
+                omic_type = info["type"]
+                start_pos = info["start"]
                 oid = omic_id.to(device)
-                if omic_type in ('dna', 'rna'):
+                if omic_type in ("dna", "rna"):
                     dna_rna_ids.append(oid)
                     dna_rna_map.append((b, start_pos, len(oid)))
-                elif omic_type == 'protein':
+                elif omic_type == "protein":
                     protein_ids.append(oid)
                     protein_map.append((b, start_pos, len(oid)))
+                elif omic_type == "pad":
+                    continue
                 else:
-                    raise ValueError(f'Unsupported omic type: {omic_type}')
+                    raise ValueError(f"Unsupported omic type: {omic_type}")
 
         _inject_omic(
             dna_rna_ids,
             dna_rna_map,
             self.dna_rna_model,
             self.dna_rna_projector,
-            self.dna_rna_project_token_num
+            self.dna_rna_project_token_num,
         )
 
         _inject_omic(
@@ -107,11 +130,10 @@ class OmicsOne(nn.Module):
             protein_map,
             self.protein_model,
             self.protein_projector,
-            self.protein_project_token_num
+            self.protein_project_token_num,
         )
 
         return hidden_states
-
 
     def forward(
         self,
@@ -125,12 +147,17 @@ class OmicsOne(nn.Module):
         output_attentions: Optional[bool] = None,
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
-        **kwargs
+        **kwargs,
     ) -> Union[Tuple[torch.Tensor, ...], CausalLMOutputWithPast]:
-        return_dict = return_dict if return_dict is not None else self.text_config.use_return_dict
+        return_dict = (
+            return_dict if return_dict is not None else self.text_config.use_return_dict
+        )
 
         # Always disable cache during distributed training/evaluation to avoid DynamicCache errors
-        if torch.distributed.is_initialized() and torch.distributed.get_world_size() > 1:
+        if (
+            torch.distributed.is_initialized()
+            and torch.distributed.get_world_size() > 1
+        ):
             use_cache = False
 
         # Get token embeddings
@@ -139,14 +166,12 @@ class OmicsOne(nn.Module):
         if omic_ids is not None:
             # Sanity check
             for i in range(len(omic_ids)):
-                assert len(omic_ids[i]) == len(omic_info_list[i]), \
-                    f"Mismatch in DNA count vs start_pos count at index {i}"
+                assert len(omic_ids[i]) == len(
+                    omic_info_list[i]
+                ), f"Mismatch in DNA count vs start_pos count at index {i}"
 
             hidden_states = self.process_omic_sequences(
-                hidden_states,
-                omic_ids,
-                omic_info_list,
-                input_ids.device
+                hidden_states, omic_ids, omic_info_list, input_ids.device
             )
 
         outputs = self.model(
@@ -161,14 +186,13 @@ class OmicsOne(nn.Module):
         )
         return outputs
 
-
     @torch.no_grad()
     def generate(
         self,
         input_ids: torch.LongTensor,
         attention_mask: Optional[torch.LongTensor] = None,
         omic_ids: Optional[List[List[torch.LongTensor]]] = None,
-        omic_start_pos_list: Optional[List[List[int]]] = None,
+        omic_info_list: Optional[List[List[dict]]] = None,
         max_length: Optional[int] = None,
         min_length: Optional[int] = None,
         do_sample: bool = True,
@@ -177,31 +201,25 @@ class OmicsOne(nn.Module):
         top_k: Optional[int] = None,
         num_beams: Optional[int] = None,
         no_repeat_ngram_size: Optional[int] = None,
-        **generate_kwargs
+        **generate_kwargs,
     ) -> torch.LongTensor:
-        
-        if torch.distributed.is_initialized() and torch.distributed.get_world_size() > 1:
-            use_cache = False
-    
+
+        if (
+            torch.distributed.is_initialized()
+            and torch.distributed.get_world_size() > 1
+        ):
+            generate_kwargs.setdefault("use_cache", False)
+
         hidden_states = self.model.get_input_embeddings()(input_ids)
 
         if omic_ids is not None:
-            if omic_start_pos_list is None:
-                omic_start_pos_list = []
-                for ids in input_ids:
-                    positions = (ids == self.dna_start_token_id).nonzero(as_tuple=True)[0].tolist()
-                    omic_start_pos_list.append(positions)
-
-            # Sanity check
             for i in range(len(omic_ids)):
-                assert len(omic_ids[i]) == len(omic_start_pos_list[i]), \
-                    f"Mismatch in DNA count vs start_pos count at index {i}"
+                assert len(omic_ids[i]) == len(
+                    omic_info_list[i]
+                ), f"Mismatch in omic count vs info count at index {i}"
 
-            hidden_states = self.process_dna_sequences(
-                hidden_states,
-                omic_ids,
-                omic_start_pos_list,
-                input_ids.device
+            hidden_states = self.process_omic_sequences(
+                hidden_states, omic_ids, omic_info_list, input_ids.device
             )
 
         output_ids = self.model.generate(
@@ -215,6 +233,6 @@ class OmicsOne(nn.Module):
             no_repeat_ngram_size=no_repeat_ngram_size,
             pad_token_id=self.model.config.pad_token_id,
             eos_token_id=self.model.config.eos_token_id,
-            **generate_kwargs
+            **generate_kwargs,
         )
         return output_ids
