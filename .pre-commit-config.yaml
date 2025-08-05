@@ -9,11 +9,11 @@ repos:
     hooks:
       - id: isort
         name: isort
-  # - repo: https://github.com/PyCQA/pylint
-  #   rev: v2.15.5
-  #   hooks:
-  #     - id: pylint
-  #       name: pylint
-  #       entry: pylint
-  #       language: system
-  #       types: [python]
+  - repo: https://github.com/PyCQA/pylint
+    rev: v2.15.5
+    hooks:
+      - id: pylint
+        name: pylint
+        entry: pylint
+        language: system
+        types: [python]
