@@ -28,12 +28,10 @@ def merge_biomarkers_to_parquet(
     tag_re = re.compile(rf"<({'|'.join(markers)})>(.*?)<\1>", re.IGNORECASE | re.DOTALL)
 
     # IUPAC 合法大写碱基正则
-    nt_base_regex = re.compile(r"^[ACGT]+$")
+    nt_base_regex = re.compile(r"^[ACGTN]+$")
+    esm_base_regex = re.compile(r"^[ACDEFGHIKLMNPQRSTVWYBXZOU]+$")
 
-    allow_base = {
-        "dna": nt_base_regex,
-        "rna": nt_base_regex,
-    }
+    allow_base = {"dna": nt_base_regex, "rna": nt_base_regex, "protein": esm_base_regex}
 
     removed_empty_label = 0
     removed_invalid_seq = 0
@@ -49,7 +47,11 @@ def merge_biomarkers_to_parquet(
             removed_empty_label += 1
             return
 
-        label_str = json.dumps(label_val, ensure_ascii=False) if isinstance(label_val, dict) else str(label_val)
+        label_str = (
+            json.dumps(label_val, ensure_ascii=False)
+            if isinstance(label_val, dict)
+            else str(label_val)
+        )
 
         seqs: List[str] = []
         kinds: List[str] = []
@@ -124,15 +126,13 @@ def merge_biomarkers_to_parquet(
 
 # ------------------- 示例调用 -------------------
 if __name__ == "__main__":
-    base_dir = "/fs-computility/ai4agr/lijinzhe/code/BioMLLM_V2/data_tools/sample"
-    files = [
-        "balanced_dna_rna_val_dataset.jsonl"
-    ]
-    out_path = f"{base_dir}/val_nt_dna_rna.parquet"
+    base_dir = "/tos-bjml-ai4agr/lijinzhe/dataset/BioMLLM/TargetTask0729/protein"
+    files = ["train_target_task_protein.jsonl"]
+    out_path = f"{base_dir}/train_target_task_protein.parquet"
 
     merge_biomarkers_to_parquet(
         base_dir,
         files,
         out_path,
-        markers=("dna", "rna"),  # 后续可拓展 protein
+        markers=("dna", "rna", "protein"),  # 后续可拓展 protein
     )

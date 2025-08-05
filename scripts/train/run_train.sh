@@ -1,11 +1,10 @@
 enable_list="multimodal model.model.embed_tokens model.model.layers model.lm_head"
-experiment_name="Qwen3_0.6B_NT_sft_0725_exp1"
-output_path="/tos-bjml-ai4agr/chenzihong/BioMLLM/RES_Model/${experiment_name}"
+experiment_name="Qwen3_4B_Omics_sft_0805_test"
+output_path="/tos-bjml-ai4agr/lijinzhe/BioMLLM/RES_Model/${experiment_name}"
 
 options="--experiment-name $experiment_name \
 --output_dir $output_path \
---use-lora \
---text-model-path /tos-bjml-ai4agr/lijinzhe/BioMLLM/Qwen3-0.6B \
+--text-model-path /tos-bjml-ai4agr/lijinzhe/BioMLLM/Qwen3-4B \
 --dna-rna-model-path /tos-bjml-ai4agr/lijinzhe/BioModel/nucleotide-transformer/  \
 --dna-rna-k-tokens 128 \
 --protein-model-path /tos-bjml-ai4agr/lijinzhe/BioMLLM/esm2_t33_650M_UR50D/ \
@@ -21,9 +20,9 @@ options="--experiment-name $experiment_name \
 --eval-max-src-len 1024 \
 --dataloader_num_workers 4 \
 --mode sft \
---per_device_train_batch_size 2 \
+--per_device_train_batch_size 1 \
 --per_device_eval_batch_size 4 \
---read-nums 1000 \
+--read-nums 3000 \
 --eval-read-nums 300 \
 --num_train_epochs 3 \
 --learning_rate 1.0e-5 \
@@ -39,15 +38,16 @@ options="--experiment-name $experiment_name \
 --save-total-limit 50 \
 --swanlab \
 --swanlab-team BioMLLM_report \
---swanlab-project BioMLLM_NT \
+--swanlab-project BioMLLM \
 --report_to swanlab \
 --warmup_ratio 0.1 \
 " 
 # --load_best_model_at_end \
 # --save_safetensors \
 # --greater_is_better \
+# --use-lora
 
-deepspeed --include localhost:0 \
+deepspeed --include localhost:0,1 \
 src/train.py \
 --deepspeed_config src/configs/zero3_config.json \
 $options
