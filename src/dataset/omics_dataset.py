@@ -404,7 +404,7 @@ class OmicsDataset(Dataset):
         return encoding['input_ids'].squeeze(0)
     
 
-def qwen_dna_collate_fn(batch):
+def qwen_omics_collate_fn(batch):
     """
     Collate function for DataLoader with multimodal DNA batches.
     Handles variable length DNA sequences and attention masks.
@@ -453,7 +453,7 @@ def qwen_dna_collate_fn(batch):
     }
 
 
-def qwen_dna_collate_fn_inference(batch):
+def qwen_omics_collate_fn_inference(batch):
     """
     Collate function for DataLoader with multimodal DNA batches.
     Handles variable length DNA sequences and attention masks.
