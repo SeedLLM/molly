@@ -13,7 +13,7 @@ from transformers import (
     set_seed,
 )
 
-from dataset.omics_dataset import DatasetConfig, OmicsDataset, qwen_dna_collate_fn
+from dataset.omics_dataset import DatasetConfig, OmicsDataset, qwen_omics_collate_fn
 from model import OmicsOne, get_omics_one_config
 from trainer import OmicsTrainer
 from utils import (
@@ -157,6 +157,7 @@ def setup_dataloaders(args, tokenizer, dna_rna_tokenizer, protein_tokenizer):
         read_nums=args.read_nums,
         shuffle=True,
         seed=42,
+        type="Train",
         num_workers=args.dataloader_num_workers,
     )
 
@@ -184,6 +185,7 @@ def setup_dataloaders(args, tokenizer, dna_rna_tokenizer, protein_tokenizer):
             read_nums=args.eval_read_nums,
             shuffle=False,
             seed=42,
+            type="Eval",
             num_workers=args.dataloader_num_workers,
         )
 
@@ -536,7 +538,7 @@ def main():
             set_up_trainable_param(model, args)
 
         # Create a custom data collator that uses qwen_dna_collate_fn
-        data_collator = qwen_dna_collate_fn
+        data_collator = qwen_omics_collate_fn
 
         # 将所有参数打印出来以进行调试
         if args.global_rank == 0:
