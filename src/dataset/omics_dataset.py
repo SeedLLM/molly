@@ -338,7 +338,7 @@ class OmicsDataset(Dataset):
         
         
         attention_mask = [1] * len(input_ids)
-        if self.dataset_type != "Test":
+        if self.dataset_type == "Test":
             omic_start_pos_list = sample["omic_info_list"]
 
             if self.padding and (pad_len := self.max_len - len(input_ids)) > 0:
