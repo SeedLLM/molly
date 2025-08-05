@@ -2,7 +2,6 @@ import os
 import re
 from dataclasses import dataclass
 from functools import partial
-from tkinter import N
 from typing import Any, Dict, List
 
 import numpy as np
@@ -14,8 +13,6 @@ from tqdm.contrib.concurrent import process_map
 
 @dataclass
 class DatasetConfig:
-    """OmicsDataset所需的配置类"""
-
     max_len: int = 1024
     max_src_len: int = 1024
     mode: str = "sft"
@@ -109,7 +106,6 @@ class OmicsDataset(Dataset):
             df = df.sample(frac=1, random_state=rng).reset_index(drop=True)
 
         print(f"Preprocessing {len(df)} samples...")
-        n_samples = len(df)
 
         self.data = process_map(
             partial(self._preprocess_sample, tokenizer=self.tokenizer),
@@ -296,13 +292,16 @@ class OmicsDataset(Dataset):
             "label": sample.get("label", ""),
         }
 
+    # pylint: disable=too-many-branches
     def process_sample(self, sample: Dict[str, Any]) -> Dict[str, torch.Tensor]:
         """
         Process a sample into model-ready format with tokenized sequences.
         """
         input_ids = sample["input_ids"]
 
-        # 添加助手起始标记
+        # 初始化 cal_metric_pos 为 None
+        cal_metric_pos = None
+
         input_ids.extend(self.assistant_start_ids)
 
         # Process output based on mode
@@ -336,7 +335,6 @@ class OmicsDataset(Dataset):
                 labels = labels[: self.max_len - 1] + [self.eos_id]
 
             # Calculate metric position
-            cal_metric_pos = None
             if self.cal_metric_pos is not None:
                 cal_metric_pos = input_len + 1 + self.cal_metric_pos
             elif len(output_ids) > 0:
@@ -351,7 +349,7 @@ class OmicsDataset(Dataset):
             if self.padding and (pad_len := self.max_len - len(input_ids)) > 0:
                 input_ids[:0] = [self.pad_id] * pad_len
                 attention_mask[:0] = [0] * pad_len
-                for i in range(len(omic_start_pos_list)):
+                for i, _ in enumerate(omic_start_pos_list):
                     omic_start_pos_list[i]["start"] += pad_len
             # Convert to tensors
             return {
@@ -360,26 +358,24 @@ class OmicsDataset(Dataset):
                 "omic_info_list": omic_start_pos_list,
                 "attention_mask": torch.LongTensor(attention_mask),
                 "task": sample["task"],
-                "kind": sample["kind"],
                 "raw_label": sample["label"],
                 "raw_input": sample["raw_input"],
                 "raw_output": sample["raw_output"],
             }
-        else:
-            # Add padding if needed
-            if self.padding and (pad_len := self.max_len - len(input_ids)) > 0:
-                input_ids.extend([self.pad_id] * pad_len)
-                labels.extend([-100] * pad_len)
-                attention_mask.extend([0] * pad_len)
+        # Add padding if needed
+        if self.padding and (pad_len := self.max_len - len(input_ids)) > 0:
+            input_ids.extend([self.pad_id] * pad_len)
+            labels.extend([-100] * pad_len)
+            attention_mask.extend([0] * pad_len)
 
-            return {
-                "input_ids": torch.LongTensor(input_ids),
-                "omic_ids": torch.stack(sample["omic_ids_list"]),
-                "omic_info_list": sample["omic_info_list"],
-                "labels": torch.LongTensor(labels),
-                "attention_mask": torch.LongTensor(attention_mask),
-                "cal_metric_pos": cal_metric_pos,
-            }
+        return {
+            "input_ids": torch.LongTensor(input_ids),
+            "omic_ids": torch.stack(sample["omic_ids_list"]),
+            "omic_info_list": sample["omic_info_list"],
+            "labels": torch.LongTensor(labels),
+            "attention_mask": torch.LongTensor(attention_mask),
+            "cal_metric_pos": cal_metric_pos,
+        }
 
     def _encode_sequence(self, seq: str, seq_type: str) -> torch.LongTensor:
         """
@@ -447,7 +443,7 @@ def qwen_omics_collate_fn(batch):
     )
 
     # Pad omic_info_lists to the same length as omic_ids
-    for i in range(len(omic_info_lists)):
+    for i, _ in enumerate(omic_info_lists):
         if len(omic_info_lists[i]) < omic_ids.shape[1]:
             omic_info_lists[i].extend(
                 [{"type": "pad", "start": -1}]
@@ -506,8 +502,7 @@ def qwen_omics_collate_fn_inference(batch):
         else None
     )
 
-    # Pad omic_info_lists to the same length as omic_ids
-    for i in range(len(omic_info_lists)):
+    for i, _ in enumerate(omic_info_lists):
         if len(omic_info_lists[i]) < omic_ids.shape[1]:
             omic_info_lists[i].extend(
                 [{"type": "pad", "start": -1}]
