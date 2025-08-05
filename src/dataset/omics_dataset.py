@@ -350,7 +350,6 @@ class OmicsDataset(Dataset):
 
             if self.padding and (pad_len := self.max_len - len(input_ids)) > 0:
                 input_ids[:0] = [self.pad_id] * pad_len
-                labels[:0] = [-100] * pad_len
                 attention_mask[:0] = [0] * pad_len
                 for i in range(len(omic_start_pos_list)):
                     omic_start_pos_list[i]["start"] += pad_len
@@ -359,7 +358,6 @@ class OmicsDataset(Dataset):
                 "input_ids": torch.LongTensor(input_ids),
                 "omic_ids": torch.stack(sample["omic_ids_list"]),
                 "omic_info_list": omic_start_pos_list,
-                "labels": torch.LongTensor(labels),
                 "attention_mask": torch.LongTensor(attention_mask),
                 "task": sample["task"],
                 "kind": sample["kind"],
@@ -409,13 +407,7 @@ class OmicsDataset(Dataset):
                 return_tensors="pt",
             )
         else:
-            encoding = self.protein_tokenizer(
-                seq,
-                padding="max_length",
-                max_length=self.protein_project_token_num,
-                truncation=True,
-                return_tensors="pt",
-            )
+            raise ValueError(f"Unsupported sequence type: {seq_type}")
         return encoding["input_ids"].squeeze(0)
 
 
@@ -577,7 +569,3 @@ def format_parquet_for_bio_llm(example: Dict[str, Any]) -> Dict[str, Any]:
         "task": example.get("task", ""),
         "kind": example.get("kind", ""),
     }
-
-
-if __name__ == "__main__":
-    pass
