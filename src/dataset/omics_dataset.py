@@ -424,7 +424,6 @@ def qwen_omics_collate_fn(batch):
     attention_mask = [sample["attention_mask"] for sample in batch]
     cal_metric_pos = [sample.get("cal_metric_pos") for sample in batch]
     omic_info_lists = [sample.get("omic_info_list", []) for sample in batch]
-    omic_counts = [len(omic_info_list) for omic_info_list in omic_info_lists]
     omic_ids = [sample.get("omic_ids", None) for sample in batch]
 
     input_ids = torch.nn.utils.rnn.pad_sequence(
@@ -456,7 +455,6 @@ def qwen_omics_collate_fn(batch):
         "attention_mask": attention_mask,
         "omic_ids": omic_ids,
         "omic_info_list": omic_info_lists,
-        "omic_counts": omic_counts,
         "cal_metric_pos": cal_metric_pos,
     }
 
@@ -474,11 +472,9 @@ def qwen_omics_collate_fn_inference(batch):
     """
 
     input_ids = [sample["input_ids"] for sample in batch]
-    labels = [sample["labels"] for sample in batch]
     attention_mask = [sample["attention_mask"] for sample in batch]
     cal_metric_pos = [sample.get("cal_metric_pos") for sample in batch]
     omic_info_lists = [sample.get("omic_info_list", []) for sample in batch]
-    omic_counts = [len(omic_info_list) for omic_info_list in omic_info_lists]
     omic_ids = [sample.get("omic_ids", None) for sample in batch]
 
     raw_input = [sample.get("raw_input") for sample in batch]
@@ -489,9 +485,6 @@ def qwen_omics_collate_fn_inference(batch):
 
     input_ids = torch.nn.utils.rnn.pad_sequence(
         input_ids, batch_first=True, padding_value=0
-    )
-    labels = torch.nn.utils.rnn.pad_sequence(
-        labels, batch_first=True, padding_value=-100
     )
     attention_mask = torch.nn.utils.rnn.pad_sequence(
         attention_mask, batch_first=True, padding_value=0
@@ -513,8 +506,7 @@ def qwen_omics_collate_fn_inference(batch):
         "input_ids": input_ids,
         "attention_mask": attention_mask,
         "omic_ids": omic_ids,
-        "omic_start_pos_list": omic_info_lists,
-        "omic_counts": omic_counts,
+        "omic_info_list": omic_info_lists,
         "cal_metric_pos": cal_metric_pos,
         "input": raw_input,
         "raw_output": raw_output,
