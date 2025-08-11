@@ -537,9 +537,6 @@ def main():
             print_rank_0("Using full parameter fine-tuning")
             set_up_trainable_param(model, args)
 
-        # Create a custom data collator that uses qwen_dna_collate_fn
-        data_collator = qwen_omics_collate_fn
-
         # 将所有参数打印出来以进行调试
         if args.global_rank == 0:
             print_rank_0("-------- Training Configuration --------")
@@ -552,7 +549,8 @@ def main():
             if args.swanlab:
                 print_rank_0(f"SwanLab logging: Enabled")
 
-        # Initialize the OmicsTrainer
+        args.deepspeed = args.deepspeed_config
+
         try:
             trainer = OmicsTrainer(
                 model=model,
@@ -560,7 +558,7 @@ def main():
                 train_dataset=train_dataset,
                 eval_dataset=eval_dataset,
                 tokenizer=tokenizer,
-                data_collator=data_collator,
+                data_collator=qwen_omics_collate_fn,
             )
 
             # Start training
