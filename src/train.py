@@ -13,6 +13,9 @@ from transformers import (
     set_seed,
 )
 
+# pylint: disable=no-name-in-module
+# pylint: disable=too-many-branches
+# pylint: disable=too-many-statements
 from dataset.omics_dataset import DatasetConfig, OmicsDataset, qwen_omics_collate_fn
 from model import OmicsOne, get_omics_one_config
 from trainer import OmicsTrainer
@@ -437,7 +440,7 @@ def main():
     parser.add_argument(
         "--gradient-accumulation-steps",
         type=int,
-        default=8,
+        default=1,
         help="Gradient accumulation steps",
     )
     parser.add_argument("--warmup_ratio", type=float, default=0.01, help="Warmup ratio")
@@ -550,7 +553,7 @@ def main():
             print_rank_0(f"Learning rate: {args.learning_rate}")
             print_rank_0(f"Dataset: {args.train_dataset_path}")
             if args.swanlab:
-                print_rank_0(f"SwanLab logging: Enabled")
+                print_rank_0("SwanLab logging: Enabled")
 
         # Initialize the OmicsTrainer
         try:
@@ -562,7 +565,6 @@ def main():
                 tokenizer=tokenizer,
                 data_collator=data_collator,
             )
-
             # Start training
             trainer.train()
         except Exception as e:
