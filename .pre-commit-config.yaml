@@ -16,5 +16,5 @@ repos:
         name: pylint
         entry: pylint
         language: system
-        types: [python]
-        args: [--rcfile=.pylintrc, src/]
+        files: ^src/
+        args: [--rcfile=.pylintrc]

@@ -1,5 +1,4 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
+# pylint: skip-file
 """
 Merge jsonl files with <dna>/<rna>/<protein> tags into one Parquet,
 while validating that <dna>/<rna> sequences only contain IUPAC-compliant bases.
@@ -126,9 +125,10 @@ def merge_biomarkers_to_parquet(
 
 # ------------------- 示例调用 -------------------
 if __name__ == "__main__":
-    base_dir = "/tos-bjml-ai4agr/lijinzhe/dataset/BioMLLM/TargetTask0729/protein"
-    files = ["train_target_task_protein.jsonl"]
-    out_path = f"{base_dir}/train_target_task_protein.parquet"
+    # base_dir = "/tos-bjml-ai4agr/lijinzhe/dataset/BioMLLM/TargetTask0729/protein"
+    base_dir = "/tos-bjml-ai4agr/lijinzhe/dataset/BioMLLM/TargetTask0808/Solubility"
+    files = ["train_solubility_task_0808.jsonl"]
+    out_path = f"{base_dir}/train_solubility_task_0808.parquet"
 
     merge_biomarkers_to_parquet(
         base_dir,

@@ -1,17 +1,19 @@
+# pylint: skip-file
 import json
 import random
-from pathlib import Path
 from collections import defaultdict
-from typing import Union, Dict, List
+from pathlib import Path
+from typing import Dict, List, Union
 
-from transformers import AutoTokenizer, AutoModelForCausalLM
 import torch
 from tqdm import tqdm
+from transformers import AutoModelForCausalLM, AutoTokenizer
+
 
 def sample_jsonl_by_task(
     input_dir: Union[str, Path],
     output_path: Union[str, Path],
-    sample_num_per_task: int = 1
+    sample_num_per_task: int = 1,
 ) -> None:
     """
     从 input_dir 下所有 .jsonl 文件中按 task 字段分组采样，每个 task 随机抽 sample_num_per_task 条写入 output_path。
@@ -50,7 +52,9 @@ def sample_jsonl_by_task(
         for item in sampled_data:
             out_file.write(json.dumps(item, ensure_ascii=False) + "\n")
 
-    print(f"✅ 总共采样 {len(sampled_data)} 条，来自 {len(task_to_items)} 个 task，已写入：{output_path}")
+    print(
+        f"✅ 总共采样 {len(sampled_data)} 条，来自 {len(task_to_items)} 个 task，已写入：{output_path}"
+    )
 
 
 # 基于llm的评估
@@ -59,14 +63,11 @@ def evaluate_label_match_qwen_chat(
     model_path: str,
     output_file: str = None,
     max_eval: int = None,
-    max_new_tokens: int = 128
+    max_new_tokens: int = 128,
 ):
     tokenizer = AutoTokenizer.from_pretrained(model_path, trust_remote_code=True)
     model = AutoModelForCausalLM.from_pretrained(
-        model_path,
-        torch_dtype=torch.float16,
-        device_map="auto",
-        trust_remote_code=True
+        model_path, torch_dtype=torch.float16, device_map="auto", trust_remote_code=True
     )
     model.eval()
 
@@ -89,7 +90,7 @@ def evaluate_label_match_qwen_chat(
                 f"Question: {raw_input}\n"
                 f"Label: {label}\n"
                 f"LLM Output: {llm_output}\n\n"
-                "Answer strictly with \"Yes\" or \"No\" only. Do not explain."
+                'Answer strictly with "Yes" or "No" only. Do not explain.'
             )
 
             messages = [{"role": "user", "content": prompt}]
@@ -97,7 +98,7 @@ def evaluate_label_match_qwen_chat(
                 messages,
                 tokenize=False,
                 add_generation_prompt=True,
-                enable_thinking=False
+                enable_thinking=False,
             )
             inputs = tokenizer([text], return_tensors="pt").to(model.device)
 
@@ -108,18 +109,22 @@ def evaluate_label_match_qwen_chat(
                     do_sample=True,
                     temperature=0.8,
                     top_p=0.95,
-                    pad_token_id=tokenizer.eos_token_id
+                    pad_token_id=tokenizer.eos_token_id,
                 )
 
-            output_ids = generated_ids[0][len(inputs.input_ids[0]):].tolist()
+            output_ids = generated_ids[0][len(inputs.input_ids[0]) :].tolist()
 
             try:
                 think_end = len(output_ids) - output_ids[::-1].index(151668)  # </think>
             except ValueError:
                 think_end = 0
 
-            thinking_text = tokenizer.decode(output_ids[:think_end], skip_special_tokens=True).strip()
-            final_text = tokenizer.decode(output_ids[think_end:], skip_special_tokens=True).strip()
+            thinking_text = tokenizer.decode(
+                output_ids[:think_end], skip_special_tokens=True
+            ).strip()
+            final_text = tokenizer.decode(
+                output_ids[think_end:], skip_special_tokens=True
+            ).strip()
 
             answer_clean = final_text.strip().lower()
             correct = answer_clean.startswith("yes")
@@ -132,7 +137,7 @@ def evaluate_label_match_qwen_chat(
                 "llm_output": llm_output,
                 "answer_raw": final_text,
                 "thinking": thinking_text,
-                "correct": correct
+                "correct": correct,
             }
             results.append(result)
 
@@ -146,25 +151,31 @@ def evaluate_label_match_qwen_chat(
         # 计算总体准确率
         acc = sum(r["correct"] for r in results)
         print(f"✅ Overall Accuracy: {acc}/{len(results)} = {acc / len(results):.2%}")
-        
+
         # 按任务统计准确率
         task_stats = calculate_accuracy_by_task(results)
         print("\n📊 各任务准确率统计:")
         print("-" * 60)
         print(f"{'Task Name':<30} | {'Correct':<8} | {'Total':<8} | {'Accuracy':<10}")
         print("-" * 60)
-        
-        for task, (correct, total) in sorted(task_stats.items(), key=lambda x: x[1][1], reverse=True):
+
+        for task, (correct, total) in sorted(
+            task_stats.items(), key=lambda x: x[1][1], reverse=True
+        ):
             accuracy = correct / total if total > 0 else 0
             print(f"{task[:30]:<30} | {correct:<8} | {total:<8} | {accuracy:.2%}")
-        
+
         print("-" * 60)
-        
+
         # 保存任务统计结果
         if output_file:
-            stats_output = output_file.replace('.jsonl', '_task_stats.json')
+            stats_output = output_file.replace(".jsonl", "_task_stats.json")
             task_stats_json = {
-                task: {"correct": correct, "total": total, "accuracy": correct / total if total > 0 else 0}
+                task: {
+                    "correct": correct,
+                    "total": total,
+                    "accuracy": correct / total if total > 0 else 0,
+                }
                 for task, (correct, total) in task_stats.items()
             }
             with open(stats_output, "w", encoding="utf-8") as f_stats:
@@ -173,31 +184,32 @@ def evaluate_label_match_qwen_chat(
 
     return results
 
+
 def calculate_accuracy_by_task(results: List[Dict]) -> Dict[str, tuple]:
     """
     按任务统计准确率
-    
+
     Args:
         results: 评估结果列表
-        
+
     Returns:
         Dict[str, tuple]: 任务名称到(正确数, 总数)的映射
     """
     task_stats = defaultdict(lambda: [0, 0])  # [correct_count, total_count]
-    
+
     for result in results:
         task = result.get("task", "Unknown")
         task_stats[task][1] += 1  # 总数+1
         if result.get("correct", False):
             task_stats[task][0] += 1  # 正确数+1
-    
+
     # 将列表转换为元组
     return {task: tuple(counts) for task, counts in task_stats.items()}
 
 
 if __name__ == "__main__":
     sample_file_path = "/fs-computility/ai4agr/lijinzhe/res_data_model/biomllm_res/inference_results/Qwen3_4B_NT_sft_exp1_0710/predictions_300_samples_step500.jsonl"
-    llm_path="/fs-computility/ai4agr/lijinzhe/basemodel/Qwen3-14B"
+    llm_path = "/fs-computility/ai4agr/lijinzhe/basemodel/Qwen3-14B"
     # sample_jsonl_by_task(
     #     input_dir="/fs-computility/ai4agr/lijinzhe/res_data_model/0621_test",
     #     output_path="/fs-computility/ai4agr/lijinzhe/res_data_model/0621_test/sampled_by_task.jsonl",
@@ -207,5 +219,5 @@ if __name__ == "__main__":
         input_file=sample_file_path,
         model_path=llm_path,
         output_file="Qwen3_4B_NT_sft_exp1_0710_step500.jsonl",
-        max_new_tokens=512)
-
+        max_new_tokens=512,
+    )
