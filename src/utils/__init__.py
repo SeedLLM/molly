@@ -1,4 +1,5 @@
 from .tools import (
+    get_current_device,
     get_optimizer,
     init_swanlab_rank_0,
     pre_train_lora,
@@ -6,6 +7,7 @@ from .tools import (
     refresh_config,
     set_up_trainable_param,
     swanlab_log_rank_0,
+    time_count
 )
 
 __all__ = [

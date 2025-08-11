@@ -16,13 +16,13 @@ class DatasetConfig:
     max_len: int = 1024
     max_src_len: int = 1024
     mode: str = "sft"
-    cal_metric_pos: int = None
+    cal_metric_pos: int = -1
     padding: bool = True
     input_field: str = "input"
     output_field: str = "output"
     dna_rna_k_tokens: int = 128
     protein_k_tokens: int = 128
-    type: str = None
+    type: str = ''
 
 
 class OmicsDataset(Dataset):
@@ -105,7 +105,7 @@ class OmicsDataset(Dataset):
             rng = np.random.default_rng(self.seed)
             df = df.sample(frac=1, random_state=rng).reset_index(drop=True)
 
-        print(f"Preprocessing {len(df)} samples...")
+        print(f"Preprocessing {len(df)} samples with {num_workers} workers ...")
 
         self.data = process_map(
             partial(self._preprocess_sample, tokenizer=self.tokenizer),
@@ -207,7 +207,7 @@ class OmicsDataset(Dataset):
             },
         }
 
-        seq_info: List[Dict[str, any]] = []
+        seq_info: List[Dict[str, Any]] = []
         raw_seqs: List[str] = []
 
         for kind in ["dna", "rna", "protein"]:
@@ -301,6 +301,7 @@ class OmicsDataset(Dataset):
 
         # 初始化 cal_metric_pos 为 None
         cal_metric_pos = None
+        labels = None
 
         input_ids.extend(self.assistant_start_ids)
 

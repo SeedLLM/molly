@@ -6,7 +6,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from transformers import AutoModelForCausalLM, AutoModelForMaskedLM
 from transformers.modeling_outputs import CausalLMOutputWithPast
-
+from utils.tools import time_count
 
 class OmicsOne(nn.Module):
     def __init__(self, config):
@@ -15,22 +15,21 @@ class OmicsOne(nn.Module):
         self.dna_rna_config = config.dna_rna_config
         self.protein_config = config.protein_config
 
-        self.model = AutoModelForCausalLM.from_config(self.text_config)
+        self.model = None
+        self.dna_rna_model = None
+        self.protein_model = None
 
-        self.dna_rna_model = AutoModelForMaskedLM.from_config(
-            self.dna_rna_config, trust_remote_code=True
-        )
-        self.dna_rna_projector = nn.Linear(
-            self.dna_rna_config.hidden_size, self.text_config.hidden_size
-        )
+        with time_count("Loaded dna rna projector"):
+            self.dna_rna_projector = nn.Linear(
+                self.dna_rna_config.hidden_size, self.text_config.hidden_size
+            )
         self.dna_rna_project_token_num = config.dna_rna_project_token_num
 
-        self.protein_model = AutoModelForMaskedLM.from_config(
-            self.protein_config, trust_remote_code=True
-        )
-        self.protein_projector = nn.Linear(
-            self.protein_config.hidden_size, self.text_config.hidden_size
-        )
+
+        with time_count("Loaded protein projector"):
+            self.protein_projector = nn.Linear(
+                self.protein_config.hidden_size, self.text_config.hidden_size
+            )
         self.protein_project_token_num = config.protein_project_token_num
 
     def set_special_tokens(self, tokenizer):

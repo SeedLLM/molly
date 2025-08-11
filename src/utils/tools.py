@@ -4,8 +4,11 @@ import deepspeed
 import deepspeed.ops as ds_optim
 import swanlab
 from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
-from torch import nn, optim
-
+from torch import nn, optim, device as torch_device
+import os
+import time
+from contextlib import contextmanager
+from transformers.utils import is_torch_cuda_available
 
 def print_rank_0(*args, **kwargs):
     """
@@ -24,6 +27,22 @@ def print_rank_0(*args, **kwargs):
         # 如果deepspeed未安装或者发生其他错误，直接打印
         print(*args, **kwargs)
 
+@contextmanager
+def time_count(name="block"):
+    start = time.perf_counter()
+    yield
+    elapsed = time.perf_counter() - start
+    # print_rank_0(f"[{name}] took {elapsed:.3f} s")
+    print(f"[{name}] took {elapsed:.3f} s")
+
+def get_current_device() -> "torch.device":
+    r"""Get the current available device."""
+    if is_torch_cuda_available():
+        device = "cuda:{}".format(os.getenv("LOCAL_RANK", "0"))
+    else:
+        device = "cpu"
+
+    return torch_device(device)
 
 def swanlab_log_rank_0(metrics, step, args=None):
     """
@@ -79,7 +98,7 @@ def init_swanlab_rank_0(args, experiment_suffix=""):
             )
 
             # 登录
-            swanlab.login(api_key="7BZRyWx1ftGxsthmlgZ1Q", save=True)
+            swanlab.login()
             print_rank_0("SwanLab login successful")
 
             # 初始化

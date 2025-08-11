@@ -24,6 +24,8 @@ from utils import (
     pre_train_lora,
     print_rank_0,
     set_up_trainable_param,
+    time_count,
+    get_current_device,
 )
 
 # 全局生效
@@ -70,42 +72,56 @@ def setup_model_and_optimizer(args, tokenizer):
     model_config.dna_rna_project_token_num = args.dna_rna_k_tokens
     model_config.protein_project_token_num = args.protein_k_tokens
 
-    with torch.device("cpu"):
-        omics_one = OmicsOne(config=model_config)
+    omics_one = OmicsOne(config=model_config)
     omics_one.set_special_tokens(tokenizer)
 
-    if args.load_pretrained:
-        qwen_model = AutoModelForCausalLM.from_pretrained(
-            args.text_model_path,
-            torch_dtype=torch.bfloat16,
-            trust_remote_code=True,
-            low_cpu_mem_usage=True,
-            device_map=None,
-        )
-        omics_one.model = qwen_model
+    current_device = get_current_device()
+    # if args.load_pretrained:
+    if args.no_load_pretrained:
+        with time_count("Randomize llm model"):
+            omics_one.model = AutoModelForCausalLM.from_config(model_config.text_config)
+        with time_count("Randomize dna rna model"):
+            omics_one.dna_rna_model = AutoModelForMaskedLM.from_config(
+                model_config.dna_rna_config, trust_remote_code=True
+            )
+        with time_count("Randomize protein model"):
+            omics_one.protein_model = AutoModelForMaskedLM.from_config(
+                model_config.protein_config, trust_remote_code=True
+            )
+    else:
+        # import pdb
+        # pdb.set_trace()
+        # https://github.com/huggingface/transformers/issues/38667
+        with time_count("Loaded dna rna model"):
+            dna_rna_model = AutoModelForMaskedLM.from_pretrained(
+                args.dna_rna_model_path,
+                torch_dtype=torch.bfloat16,
+                trust_remote_code=True,
+                device_map=current_device,
+            )
+            omics_one.dna_rna_model = dna_rna_model
 
-        dna_rna_model = AutoModelForMaskedLM.from_pretrained(
-            args.dna_rna_model_path,
-            torch_dtype=torch.bfloat16,
-            trust_remote_code=True,
-            low_cpu_mem_usage=True,
-            device_map=None,
-        )
-        omics_one.dna_rna_model = dna_rna_model
+        with time_count("Loaded llm model"):
+            qwen_model = AutoModelForCausalLM.from_pretrained(
+                args.text_model_path,
+                torch_dtype="auto",
+                trust_remote_code=True,
+                device_map=current_device,
+                attn_implementation=args.attn_impl,
+            )
+            omics_one.model = qwen_model
 
-        protein_model = AutoModelForMaskedLM.from_pretrained(
-            args.protein_model_path,
-            torch_dtype=torch.bfloat16,
-            trust_remote_code=True,
-            low_cpu_mem_usage=True,
-            device_map=None,
-        )
 
-        omics_one.protein_model = protein_model
+        with time_count("Loaded protein model"):
+            protein_model = AutoModelForMaskedLM.from_pretrained(
+                args.protein_model_path,
+                torch_dtype=torch.bfloat16,
+                trust_remote_code=True,
+                device_map=current_device,
+            )
+            omics_one.protein_model = protein_model
 
         print_rank_0("Base models loaded successfully")
-    else:
-        print_rank_0("Initializing model with random weights")
 
     # 4. 冻结多组学Encoder的参数
     if args.freeze_bio:
@@ -266,10 +282,10 @@ def main():
     )
     parser.add_argument("--device", type=str, default="cuda")
     parser.add_argument(
-        "--load-pretrained",
+        "--no-load-pretrained",
         action="store_true",
-        default=True,
-        help="Load pretrained parameters for both models",
+        default=False,
+        help="Do not load pretrained parameters for both models, use random weight instead",
     )
     parser.add_argument(
         "--load_best_model_at_end",
@@ -492,6 +508,9 @@ def main():
         help="Save model in safetensors format",
     )
     parser.add_argument("--lora_r", type=int, default=64, help="LoRA rank")
+
+    # Training Optimization
+    parser.add_argument("--attn_impl", type=str, default='sdpa', choices=['sdpa', 'flash_attention_2'], help="FlashAttn Implementation, support none or fa2")
 
     # Add DeepSpeed arguments
     parser = deepspeed.add_config_arguments(parser)
