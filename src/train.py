@@ -36,9 +36,8 @@ def setup_tokenizers(args):
     """
     Setup tokenizers for both text and DNA models.
     """
-    tokenizer = AutoTokenizer.from_pretrained(
-        args.text_model_path, trust_remote_code=True
-    )
+    tokenizer = AutoTokenizer.from_pretrained(args.text_model_path,
+                                              trust_remote_code=True)
 
     new_tokens = [
         "<|dna_start|>",
@@ -53,12 +52,10 @@ def setup_tokenizers(args):
     ]
 
     tokenizer.add_special_tokens({"additional_special_tokens": new_tokens})
-    dna_rna_tokenizer = AutoTokenizer.from_pretrained(
-        args.dna_rna_model_path, trust_remote_code=True
-    )
-    protein_tokenizer = AutoTokenizer.from_pretrained(
-        args.protein_model_path, trust_remote_code=True
-    )
+    dna_rna_tokenizer = AutoTokenizer.from_pretrained(args.dna_rna_model_path,
+                                                      trust_remote_code=True)
+    protein_tokenizer = AutoTokenizer.from_pretrained(args.protein_model_path,
+                                                      trust_remote_code=True)
 
     return tokenizer, dna_rna_tokenizer, protein_tokenizer
 
@@ -66,9 +63,9 @@ def setup_tokenizers(args):
 def setup_model_and_optimizer(args, tokenizer):
     print_rank_0("-------------------init model-------------------------")
 
-    model_config = get_omics_one_config(
-        args.text_model_path, args.dna_rna_model_path, args.protein_model_path
-    )
+    model_config = get_omics_one_config(args.text_model_path,
+                                        args.dna_rna_model_path,
+                                        args.protein_model_path)
     model_config.dna_rna_project_token_num = args.dna_rna_k_tokens
     model_config.protein_project_token_num = args.protein_k_tokens
 
@@ -79,15 +76,14 @@ def setup_model_and_optimizer(args, tokenizer):
     # if args.load_pretrained:
     if args.no_load_pretrained:
         with time_count("Randomize llm model"):
-            omics_one.model = AutoModelForCausalLM.from_config(model_config.text_config)
+            omics_one.model = AutoModelForCausalLM.from_config(
+                model_config.text_config)
         with time_count("Randomize dna rna model"):
             omics_one.dna_rna_model = AutoModelForMaskedLM.from_config(
-                model_config.dna_rna_config, trust_remote_code=True
-            )
+                model_config.dna_rna_config, trust_remote_code=True)
         with time_count("Randomize protein model"):
             omics_one.protein_model = AutoModelForMaskedLM.from_config(
-                model_config.protein_config, trust_remote_code=True
-            )
+                model_config.protein_config, trust_remote_code=True)
     else:
         # import pdb
         # pdb.set_trace()
@@ -110,7 +106,6 @@ def setup_model_and_optimizer(args, tokenizer):
                 attn_implementation=args.attn_impl,
             )
             omics_one.model = qwen_model
-
 
         with time_count("Loaded protein model"):
             protein_model = AutoModelForMaskedLM.from_pretrained(
@@ -183,7 +178,8 @@ def setup_dataloaders(args, tokenizer, dna_rna_tokenizer, protein_tokenizer):
     # 创建评估数据集（如果需要）
     eval_dataset = None
     if not args.skip_eval and args.eval_dataset_path:
-        print_rank_0(f"Loading evaluation dataset from {args.eval_dataset_path}")
+        print_rank_0(
+            f"Loading evaluation dataset from {args.eval_dataset_path}")
         eval_config = DatasetConfig(
             max_len=args.eval_max_len,
             max_src_len=args.eval_max_src_len,
@@ -226,7 +222,9 @@ def main():
         required=True,
         help="Output path for saving models and logs",
     )
-    parser.add_argument("--swanlab", action="store_true", help="Enable swanlab logging")
+    parser.add_argument("--swanlab",
+                        action="store_true",
+                        help="Enable swanlab logging")
     parser.add_argument(
         "--report_to",
         type=str,
@@ -235,16 +233,21 @@ def main():
         choices=["swanlab", "tensorboard", "wandb", "mlflow", "neptune"],
         help="Reporting tool(s) for logging",
     )
-    parser.add_argument(
-        "--swanlab-team", type=str, default=None, help="Swanlab team name"
-    )
-    parser.add_argument(
-        "--swanlab-project", type=str, default=None, help="Swanlab project name"
-    )
-    parser.add_argument("--test-code", action="store_true", help="Test mode flag")
-    parser.add_argument(
-        "--profile-log-dir", type=str, default=None, help="Profile log directory"
-    )
+    parser.add_argument("--swanlab-team",
+                        type=str,
+                        default=None,
+                        help="Swanlab team name")
+    parser.add_argument("--swanlab-project",
+                        type=str,
+                        default=None,
+                        help="Swanlab project name")
+    parser.add_argument("--test-code",
+                        action="store_true",
+                        help="Test mode flag")
+    parser.add_argument("--profile-log-dir",
+                        type=str,
+                        default=None,
+                        help="Profile log directory")
     parser.add_argument(
         "--global-rank",
         default=-1,
@@ -253,9 +256,10 @@ def main():
     )
 
     # Model
-    parser.add_argument(
-        "--text-model-path", type=str, required=True, help="Path to the Qwen model"
-    )
+    parser.add_argument("--text-model-path",
+                        type=str,
+                        required=True,
+                        help="Path to the Qwen model")
     parser.add_argument(
         "--dna-rna-model-path",
         type=str,
@@ -285,7 +289,8 @@ def main():
         "--no-load-pretrained",
         action="store_true",
         default=False,
-        help="Do not load pretrained parameters for both models, use random weight instead",
+        help=
+        "Do not load pretrained parameters for both models, use random weight instead",
     )
     parser.add_argument(
         "--load_best_model_at_end",
@@ -303,9 +308,10 @@ def main():
         default=True,
         help="Freeze the parameters of the DNA/RNA and protein models",
     )
-    parser.add_argument(
-        "--bf16", action="store_true", default=False, help="Use bfloat16 precision"
-    )
+    parser.add_argument("--bf16",
+                        action="store_true",
+                        default=False,
+                        help="Use bfloat16 precision")
     parser.add_argument(
         "--fp16",
         action="store_true",
@@ -326,18 +332,21 @@ def main():
         default=None,
         help="Path to evaluation dataset (parquet format)",
     )
-    parser.add_argument(
-        "--max-len", type=int, default=1024, help="Maximum sequence length"
-    )
-    parser.add_argument(
-        "--max-src-len", type=int, default=1024, help="Maximum source sequence length"
-    )
+    parser.add_argument("--max-len",
+                        type=int,
+                        default=1024,
+                        help="Maximum sequence length")
+    parser.add_argument("--max-src-len",
+                        type=int,
+                        default=1024,
+                        help="Maximum source sequence length")
     parser.add_argument("--eval-max-len", type=int, default=1024)
     parser.add_argument("--eval-max-src-len", type=int, default=1024)
     parser.add_argument("--skip-eval", action="store_true")
-    parser.add_argument(
-        "--read-nums", type=int, default=None, help="Number of samples to read"
-    )
+    parser.add_argument("--read-nums",
+                        type=int,
+                        default=None,
+                        help="Number of samples to read")
     parser.add_argument(
         "--eval-read-nums",
         type=int,
@@ -352,15 +361,18 @@ def main():
     )
 
     # Dataset compatibility parameters
-    parser.add_argument(
-        "--prefix", type=str, default=None, help="Prefix added to the input"
-    )
-    parser.add_argument(
-        "--postfix", type=str, default=None, help="Postfix added to the input"
-    )
-    parser.add_argument(
-        "--meta-prompt", type=str, default=None, help="Systematic prompt for input"
-    )
+    parser.add_argument("--prefix",
+                        type=str,
+                        default=None,
+                        help="Prefix added to the input")
+    parser.add_argument("--postfix",
+                        type=str,
+                        default=None,
+                        help="Postfix added to the input")
+    parser.add_argument("--meta-prompt",
+                        type=str,
+                        default=None,
+                        help="Systematic prompt for input")
     parser.add_argument(
         "--batching-stretegy",
         type=str,
@@ -368,9 +380,9 @@ def main():
         choices=["padding", "packing"],
         help="Strategy for batching dataset",
     )
-    parser.add_argument(
-        "--all-reduce-loss", action="store_true", help="Reduce loss across GPUs"
-    )
+    parser.add_argument("--all-reduce-loss",
+                        action="store_true",
+                        help="Reduce loss across GPUs")
 
     # Training configuration
     parser.add_argument(
@@ -392,9 +404,10 @@ def main():
         default=4,
         help="Evaluation batch size per GPU",
     )
-    parser.add_argument(
-        "--num_train_epochs", type=int, required=True, help="Number of training epochs"
-    )
+    parser.add_argument("--num_train_epochs",
+                        type=int,
+                        required=True,
+                        help="Number of training epochs")
     parser.add_argument(
         "--train-iters",
         type=int,
@@ -408,9 +421,10 @@ def main():
         choices=["no", "steps", "epoch"],
         help="Strategy for saving checkpoints",
     )
-    parser.add_argument(
-        "--save_steps", type=int, default=10000, help="Steps between model saves"
-    )
+    parser.add_argument("--save_steps",
+                        type=int,
+                        default=10000,
+                        help="Steps between model saves")
     parser.add_argument(
         "--eval_strategy",
         type=str,
@@ -418,9 +432,10 @@ def main():
         choices=["no", "steps", "epoch"],
         help="Strategy for evaluation",
     )
-    parser.add_argument(
-        "--eval_steps", type=int, default=10000, help="Steps between evaluations"
-    )
+    parser.add_argument("--eval_steps",
+                        type=int,
+                        default=10000,
+                        help="Steps between evaluations")
     parser.add_argument(
         "--logging_strategy",
         type=str,
@@ -428,9 +443,10 @@ def main():
         choices=["no", "steps", "epoch"],
         help="Strategy for logging",
     )
-    parser.add_argument(
-        "--logging_steps", type=int, default=10000, help="Steps between loss logging"
-    )
+    parser.add_argument("--logging_steps",
+                        type=int,
+                        default=10000,
+                        help="Steps between loss logging")
     parser.add_argument(
         "--enable-list",
         nargs="+",
@@ -444,24 +460,37 @@ def main():
         default=True,
         help="Save trainable parameters only",
     )
-    parser.add_argument(
-        "--save_only_model", action="store_true", help="Save only model parameters"
-    )
-    parser.add_argument("--if_train_llm", type=bool, default=True, help="If train llm")
+    parser.add_argument("--save_only_model",
+                        action="store_true",
+                        help="Save only model parameters")
+    parser.add_argument("--if_train_llm",
+                        type=bool,
+                        default=True,
+                        help="If train llm")
 
     # Optimizer configuration
-    parser.add_argument(
-        "--learning_rate", type=float, required=True, help="Learning rate"
-    )
+    parser.add_argument("--learning_rate",
+                        type=float,
+                        required=True,
+                        help="Learning rate")
     parser.add_argument(
         "--gradient-accumulation-steps",
         type=int,
         default=1,
         help="Gradient accumulation steps",
     )
-    parser.add_argument("--warmup_ratio", type=float, default=0.01, help="Warmup ratio")
-    parser.add_argument("--weight-decay", type=float, default=1e-2, help="Weight decay")
-    parser.add_argument("--eps", type=float, default=1e-8, help="Epsilon for optimizer")
+    parser.add_argument("--warmup_ratio",
+                        type=float,
+                        default=0.01,
+                        help="Warmup ratio")
+    parser.add_argument("--weight-decay",
+                        type=float,
+                        default=1e-2,
+                        help="Weight decay")
+    parser.add_argument("--eps",
+                        type=float,
+                        default=1e-8,
+                        help="Epsilon for optimizer")
     parser.add_argument(
         "--betas",
         nargs="+",
@@ -498,9 +527,10 @@ def main():
         help="Number of total checkpoints to keep",
     )
 
-    parser.add_argument(
-        "--local_rank", type=int, default=-1, help="Local rank for distributed training"
-    )
+    parser.add_argument("--local_rank",
+                        type=int,
+                        default=-1,
+                        help="Local rank for distributed training")
     parser.add_argument(
         "--save_safetensors",
         type=bool,
@@ -510,7 +540,11 @@ def main():
     parser.add_argument("--lora_r", type=int, default=64, help="LoRA rank")
 
     # Training Optimization
-    parser.add_argument("--attn_impl", type=str, default='sdpa', choices=['sdpa', 'flash_attention_2'], help="FlashAttn Implementation, support none or fa2")
+    parser.add_argument("--attn_impl",
+                        type=str,
+                        default='sdpa',
+                        choices=['sdpa', 'flash_attention_2'],
+                        help="FlashAttn Implementation, support none or fa2")
 
     # Add DeepSpeed arguments
     parser = deepspeed.add_config_arguments(parser)
@@ -541,15 +575,15 @@ def main():
                 init_swanlab_rank_0(args, experiment_suffix=current_time)
 
         # Setup tokenizers
-        tokenizer, dna_rna_tokenizer, protein_tokenizer = setup_tokenizers(args)
+        tokenizer, dna_rna_tokenizer, protein_tokenizer = setup_tokenizers(
+            args)
 
         # Setup model and optimizer
         model, _ = setup_model_and_optimizer(args, tokenizer)
 
         # Get dataloaders and convert to datasets for Transformers Trainer
         train_dataset, eval_dataset = setup_dataloaders(
-            args, tokenizer, dna_rna_tokenizer, protein_tokenizer
-        )
+            args, tokenizer, dna_rna_tokenizer, protein_tokenizer)
 
         # Apply parameter freezing or pre-train lora based on args.use-lora
         if args.use_lora:
@@ -562,7 +596,8 @@ def main():
         # 将所有参数打印出来以进行调试
         if args.global_rank == 0:
             print_rank_0("-------- Training Configuration --------")
-            print_rank_0(f"Model: {args.text_model_path} + {args.dna_rna_model_path}")
+            print_rank_0(
+                f"Model: {args.text_model_path} + {args.dna_rna_model_path}")
             print_rank_0(f"DNA/RNA model tokens: {args.dna_rna_k_tokens}")
             print_rank_0(f"Protein model tokens: {args.protein_k_tokens}")
             print_rank_0(f"Batch size: {args.per_device_train_batch_size}")
@@ -585,7 +620,8 @@ def main():
             # Start training
             trainer.train()
         except Exception as e:
-            print_rank_0(f"Error in trainer initialization or training: {str(e)}")
+            print_rank_0(
+                f"Error in trainer initialization or training: {str(e)}")
             print_rank_0(f"Error type: {type(e)}")
             print_rank_0(f"Detailed traceback: {traceback.format_exc()}")
             raise

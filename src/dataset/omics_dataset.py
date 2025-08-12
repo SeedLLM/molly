@@ -89,8 +89,7 @@ class OmicsDataset(Dataset):
             add_special_tokens=False,
         )
         self.assistant_start_ids = self.tokenizer.encode(
-            "<|im_end|>\n<|im_start|>assistant\n", add_special_tokens=False
-        )
+            "<|im_end|>\n<|im_start|>assistant\n", add_special_tokens=False)
 
         # Load data
         print(f"Loading parquet data from {parquet_file}")
@@ -105,13 +104,15 @@ class OmicsDataset(Dataset):
             rng = np.random.default_rng(self.seed)
             df = df.sample(frac=1, random_state=rng).reset_index(drop=True)
 
-        print(f"Preprocessing {len(df)} samples with {num_workers} workers ...")
+        print(
+            f"Preprocessing {len(df)} samples with {num_workers} workers ...")
 
         self.data = process_map(
             partial(self._preprocess_sample, tokenizer=self.tokenizer),
             df.to_dict("records"),
             max_workers=num_workers,
-            chunksize=max(1, len(df) // (num_workers * 4)),
+            chunksize=max(1,
+                          len(df) // (num_workers * 4)),
             desc="Preprocessing",
         )
 
@@ -135,6 +136,7 @@ class OmicsDataset(Dataset):
             processed["omic_info_list"]
         ), f"Mismatch in Omic IDs and Omic info for sample {idx}: {len(processed['omic_ids'])}\
         vs {len(processed['omic_info_list'])}"
+
         return processed
 
     def _pretokenize_special_tokens(self):
@@ -147,31 +149,36 @@ class OmicsDataset(Dataset):
         self.protein_start_token = "<|protein_start|>"
         self.protein_end_token = "<|protein_end|>"
         self.protein_pad_token = "<|protein_pad|>"
-        self.dna_start_id = self.tokenizer.convert_tokens_to_ids(self.dna_start_token)
-        self.dna_end_id = self.tokenizer.convert_tokens_to_ids(self.dna_end_token)
-        self.dna_pad_id = self.tokenizer.convert_tokens_to_ids(self.dna_pad_token)
-        self.rna_start_id = self.tokenizer.convert_tokens_to_ids(self.rna_start_token)
-        self.rna_end_id = self.tokenizer.convert_tokens_to_ids(self.rna_end_token)
-        self.rna_pad_id = self.tokenizer.convert_tokens_to_ids(self.rna_pad_token)
+        self.dna_start_id = self.tokenizer.convert_tokens_to_ids(
+            self.dna_start_token)
+        self.dna_end_id = self.tokenizer.convert_tokens_to_ids(
+            self.dna_end_token)
+        self.dna_pad_id = self.tokenizer.convert_tokens_to_ids(
+            self.dna_pad_token)
+        self.rna_start_id = self.tokenizer.convert_tokens_to_ids(
+            self.rna_start_token)
+        self.rna_end_id = self.tokenizer.convert_tokens_to_ids(
+            self.rna_end_token)
+        self.rna_pad_id = self.tokenizer.convert_tokens_to_ids(
+            self.rna_pad_token)
         self.protein_start_id = self.tokenizer.convert_tokens_to_ids(
-            self.protein_start_token
-        )
+            self.protein_start_token)
         self.protein_end_id = self.tokenizer.convert_tokens_to_ids(
-            self.protein_end_token
-        )
+            self.protein_end_token)
         self.protein_pad_id = self.tokenizer.convert_tokens_to_ids(
-            self.protein_pad_token
-        )
+            self.protein_pad_token)
 
         self.eos_id = self.tokenizer.eos_token_id
         self.pad_id = self.tokenizer.pad_token_id
 
         self._regex_map = {
-            "dna": re.compile(r"<dna>\s*([ACGTNacgtn]+)\s*<dna>"),
-            "rna": re.compile(r"<rna>\s*([ACGTNacgtn]+)\s*<rna>"),
-            "protein": re.compile(
-                r"<protein>\s*([ACDEFGHIKLMNPQRSTVWYBXZOU]+)\s*<protein>"
-            ),
+            "dna":
+            re.compile(r"<dna>\s*([ACGTNacgtn]+)\s*<dna>"),
+            "rna":
+            re.compile(r"<rna>\s*([ACGTNacgtn]+)\s*<rna>"),
+            "protein":
+            re.compile(
+                r"<protein>\s*([ACDEFGHIKLMNPQRSTVWYBXZOU]+)\s*<protein>"),
         }
 
     def _preprocess_sample(self, sample: dict, tokenizer) -> dict:
@@ -216,7 +223,11 @@ class OmicsDataset(Dataset):
                 continue
             for m in pat.finditer(input_text):
                 raw_seq = m.group(1).upper()
-                seq_info.append({"type": kind, "start": m.start(), "end": m.end()})
+                seq_info.append({
+                    "type": kind,
+                    "start": m.start(),
+                    "end": m.end()
+                })
                 raw_seqs.append(raw_seq)
 
         input_ids = list(self.system_prompt_ids)
@@ -229,19 +240,17 @@ class OmicsDataset(Dataset):
             s, e = info["start"], info["end"]
 
             input_ids.extend(
-                tokenizer.encode(input_text[start:s], add_special_tokens=False)
-            )
+                tokenizer.encode(input_text[start:s],
+                                 add_special_tokens=False))
             omic_info_list.append({"type": seq_type, "start": len(input_ids)})
 
             input_ids.append(tag_map[seq_type]["start"])
             if seq_type in ["dna", "rna"]:
-                input_ids.extend(
-                    [tag_map[seq_type]["pad"]] * self.dna_rna_project_token_num
-                )
+                input_ids.extend([tag_map[seq_type]["pad"]] *
+                                 self.dna_rna_project_token_num)
             else:
-                input_ids.extend(
-                    [tag_map[seq_type]["pad"]] * self.protein_project_token_num
-                )
+                input_ids.extend([tag_map[seq_type]["pad"]] *
+                                 self.protein_project_token_num)
             input_ids.append(tag_map[seq_type]["end"])
 
             start = e
@@ -249,18 +258,13 @@ class OmicsDataset(Dataset):
         # 添加剩余文本
         if start < len(input_text):
             input_ids.extend(
-                tokenizer.encode(input_text[start:], add_special_tokens=False)
-            )
+                tokenizer.encode(input_text[start:], add_special_tokens=False))
 
         # Encode the sequence
-        output_ids = (
-            tokenizer.encode(output_text, add_special_tokens=False)
-            if output_text
-            else []
-        )
-        reasoning_ids = (
-            tokenizer.encode(reasoning, add_special_tokens=False) if reasoning else []
-        )
+        output_ids = (tokenizer.encode(output_text, add_special_tokens=False)
+                      if output_text else [])
+        reasoning_ids = (tokenizer.encode(reasoning, add_special_tokens=False)
+                         if reasoning else [])
 
         # 处理序列数据
         omic_ids_list = []
@@ -293,7 +297,8 @@ class OmicsDataset(Dataset):
         }
 
     # pylint: disable=too-many-branches
-    def process_sample(self, sample: Dict[str, Any]) -> Dict[str, torch.Tensor]:
+    def process_sample(self, sample: Dict[str,
+                                          Any]) -> Dict[str, torch.Tensor]:
         """
         Process a sample into model-ready format with tokenized sequences.
         """
@@ -323,17 +328,14 @@ class OmicsDataset(Dataset):
 
             # Create labels
             # Use -100 to ignore input tokens in loss calculation
-            labels = (
-                [-100] * input_len + output_ids
-                if self.mode == "sft"
-                else input_ids.copy()
-            )
+            labels = ([-100] * input_len +
+                      output_ids if self.mode == "sft" else input_ids.copy())
 
             # Truncate if necessary
             if len(input_ids) > self.max_len:
                 # print(f"Truncating input_ids from {len(input_ids)} to {self.max_len-1}")
-                input_ids = input_ids[: self.max_len - 1] + [self.eos_id]
-                labels = labels[: self.max_len - 1] + [self.eos_id]
+                input_ids = input_ids[:self.max_len - 1] + [self.eos_id]
+                labels = labels[:self.max_len - 1] + [self.eos_id]
 
             # Calculate metric position
             if self.cal_metric_pos is not None:
@@ -427,28 +429,25 @@ def qwen_omics_collate_fn(batch):
     omic_info_lists = [sample.get("omic_info_list", []) for sample in batch]
     omic_ids = [sample.get("omic_ids", None) for sample in batch]
 
-    input_ids = torch.nn.utils.rnn.pad_sequence(
-        input_ids, batch_first=True, padding_value=0
-    )
-    labels = torch.nn.utils.rnn.pad_sequence(
-        labels, batch_first=True, padding_value=-100
-    )
-    attention_mask = torch.nn.utils.rnn.pad_sequence(
-        attention_mask, batch_first=True, padding_value=0
-    )
-    omic_ids = (
-        torch.nn.utils.rnn.pad_sequence(omic_ids, batch_first=True, padding_value=1)
-        if omic_ids
-        else None
-    )
+    input_ids = torch.nn.utils.rnn.pad_sequence(input_ids,
+                                                batch_first=True,
+                                                padding_value=0)
+    labels = torch.nn.utils.rnn.pad_sequence(labels,
+                                             batch_first=True,
+                                             padding_value=-100)
+    attention_mask = torch.nn.utils.rnn.pad_sequence(attention_mask,
+                                                     batch_first=True,
+                                                     padding_value=0)
+    omic_ids = (torch.nn.utils.rnn.pad_sequence(
+        omic_ids, batch_first=True, padding_value=1) if omic_ids else None)
 
     # Pad omic_info_lists to the same length as omic_ids
     for i, _ in enumerate(omic_info_lists):
         if len(omic_info_lists[i]) < omic_ids.shape[1]:
-            omic_info_lists[i].extend(
-                [{"type": "pad", "start": -1}]
-                * (omic_ids.shape[1] - len(omic_info_lists[i]))
-            )
+            omic_info_lists[i].extend([{
+                "type": "pad",
+                "start": -1
+            }] * (omic_ids.shape[1] - len(omic_info_lists[i])))
 
     return {
         "input_ids": input_ids,
@@ -484,24 +483,21 @@ def qwen_omics_collate_fn_inference(batch):
     raw_task = [sample.get("task") for sample in batch]
     raw_kind = [sample.get("kind") for sample in batch]
 
-    input_ids = torch.nn.utils.rnn.pad_sequence(
-        input_ids, batch_first=True, padding_value=0
-    )
-    attention_mask = torch.nn.utils.rnn.pad_sequence(
-        attention_mask, batch_first=True, padding_value=0
-    )
-    omic_ids = (
-        torch.nn.utils.rnn.pad_sequence(omic_ids, batch_first=True, padding_value=1)
-        if omic_ids
-        else None
-    )
+    input_ids = torch.nn.utils.rnn.pad_sequence(input_ids,
+                                                batch_first=True,
+                                                padding_value=0)
+    attention_mask = torch.nn.utils.rnn.pad_sequence(attention_mask,
+                                                     batch_first=True,
+                                                     padding_value=0)
+    omic_ids = (torch.nn.utils.rnn.pad_sequence(
+        omic_ids, batch_first=True, padding_value=1) if omic_ids else None)
 
     for i, _ in enumerate(omic_info_lists):
         if len(omic_info_lists[i]) < omic_ids.shape[1]:
-            omic_info_lists[i].extend(
-                [{"type": "pad", "start": -1}]
-                * (omic_ids.shape[1] - len(omic_info_lists[i]))
-            )
+            omic_info_lists[i].extend([{
+                "type": "pad",
+                "start": -1
+            }] * (omic_ids.shape[1] - len(omic_info_lists[i])))
 
     return {
         "input_ids": input_ids,
