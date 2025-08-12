@@ -19,8 +19,14 @@
         if _torch_distributed_available and torch.distributed.is_initialized()
         else None
     )
+```
+
+2. Run training script
 ```bash
 swanlab login
 
 ./scripts/train/run_train.sh
+
+# or for test
+./scripts/train/run_train_mini.sh
 ```
