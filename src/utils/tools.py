@@ -4,7 +4,11 @@ import deepspeed
 import deepspeed.ops as ds_optim
 import swanlab
 from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
-from torch import nn, optim
+from torch import nn, optim, device as torch_device
+import os
+import time
+from contextlib import contextmanager
+from transformers.utils import is_torch_cuda_available
 
 
 def print_rank_0(*args, **kwargs):
@@ -23,6 +27,25 @@ def print_rank_0(*args, **kwargs):
     except (ImportError, AttributeError, RuntimeError):
         # 如果deepspeed未安装或者发生其他错误，直接打印
         print(*args, **kwargs)
+
+
+@contextmanager
+def time_count(name="block"):
+    start = time.perf_counter()
+    yield
+    elapsed = time.perf_counter() - start
+    # print_rank_0(f"[{name}] took {elapsed:.3f} s")
+    print(f"[{name}] took {elapsed:.3f} s")
+
+
+def get_current_device() -> "torch.device":
+    r"""Get the current available device."""
+    if is_torch_cuda_available():
+        device = "cuda:{}".format(os.getenv("LOCAL_RANK", "0"))
+    else:
+        device = "cpu"
+
+    return torch_device(device)
 
 
 def swanlab_log_rank_0(metrics, step, args=None):
@@ -79,7 +102,7 @@ def init_swanlab_rank_0(args, experiment_suffix=""):
             )
 
             # 登录
-            swanlab.login(api_key="7BZRyWx1ftGxsthmlgZ1Q", save=True)
+            swanlab.login()
             print_rank_0("SwanLab login successful")
 
             # 初始化
@@ -112,14 +135,17 @@ def refresh_config(ds_config, args):
         if "eps" in args:
             ds_config["optimizer"]["params"]["eps"] = args.eps
         if "weight_decay" in args:
-            ds_config["optimizer"]["params"]["weight_decay"] = args.weight_decay
+            ds_config["optimizer"]["params"][
+                "weight_decay"] = args.weight_decay
 
     # Update scheduler parameters (now at top level)
     if "scheduler" in ds_config:
         if hasattr(args, "num_warmup_steps"):
-            ds_config["scheduler"]["params"]["warmup_num_steps"] = args.num_warmup_steps
+            ds_config["scheduler"]["params"][
+                "warmup_num_steps"] = args.num_warmup_steps
         if hasattr(args, "warmup_min_lr"):
-            ds_config["scheduler"]["params"]["warmup_min_lr"] = args.warmup_min_lr
+            ds_config["scheduler"]["params"][
+                "warmup_min_lr"] = args.warmup_min_lr
         if hasattr(args, "warmup_max_lr"):
             ds_config["scheduler"]["params"]["warmup_max_lr"] = args.lr
 
@@ -129,7 +155,8 @@ def refresh_config(ds_config, args):
 
     # Update batch size if needed
     if "train_batch_size" in ds_config and hasattr(args, "gpu_count"):
-        ds_config["train_batch_size"] = args.batch_size_per_gpu * args.gpu_count
+        ds_config[
+            "train_batch_size"] = args.batch_size_per_gpu * args.gpu_count
 
     # Ensure using bfloat16 precision
     if "fp16" in ds_config:
@@ -150,7 +177,11 @@ def get_optimizer_instance(optim_type, args, model):
     return get_regular_optimizer(optim_type, args, model)
 
 
-def get_optimizer(ds_config, args, model, optimizer_sd=None, lr_scheduler_sd=None):
+def get_optimizer(ds_config,
+                  args,
+                  model,
+                  optimizer_sd=None,
+                  lr_scheduler_sd=None):
     """
     Set up optimizer and learning rate scheduler.
 
@@ -160,7 +191,8 @@ def get_optimizer(ds_config, args, model, optimizer_sd=None, lr_scheduler_sd=Non
     This function provide clear optimizer prepare process and can adjust the parameter groups if needed.
     """
     optim_type = get_optimizer_type(args, ds_config)
-    offload_config = ds_config["zero_optimization"].get("offload_optimizer", {})
+    offload_config = ds_config["zero_optimization"].get(
+        "offload_optimizer", {})
     offload_device = offload_config.get("device", None)
     if offload_device == "cpu" or args.offload_optimizer:
         optim_type = "cpu" + optim_type
@@ -189,15 +221,18 @@ def get_optimizer(ds_config, args, model, optimizer_sd=None, lr_scheduler_sd=Non
 
 def get_regular_optimizer(optim_type, args, model):
     try:
-        params = [
-            {"params": [p for p in model.parameters() if p.requires_grad], "lr": 1}
-        ]
+        params = [{
+            "params": [p for p in model.parameters() if p.requires_grad],
+            "lr": 1
+        }]
 
         optimizer_class = {
             "adamw": partial(ds_optim.adam.FusedAdam, adam_w_mode=True),
             "adam": partial(ds_optim.adam.FusedAdam, adam_w_mode=False),
-            "cpuadamw": partial(ds_optim.adam.DeepSpeedCPUAdam, adamw_mode=True),
-            "cpuadam": partial(ds_optim.adam.DeepSpeedCPUAdam, adamw_mode=False),
+            "cpuadamw": partial(ds_optim.adam.DeepSpeedCPUAdam,
+                                adamw_mode=True),
+            "cpuadam": partial(ds_optim.adam.DeepSpeedCPUAdam,
+                               adamw_mode=False),
             "adamax": optim.Adamax,
             "sparseadam": optim.SparseAdam,
             "torchadam": optim.Adam,
@@ -205,7 +240,8 @@ def get_regular_optimizer(optim_type, args, model):
         }.get(optim_type)
 
         if optimizer_class is None:
-            raise NotImplementedError("only support adam and its variants for now")
+            raise NotImplementedError(
+                "only support adam and its variants for now")
 
         optimizer = optimizer_class(
             params,
