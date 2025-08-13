@@ -84,8 +84,7 @@ class OmicsDataset(Dataset):
 
         # 预定义固定内容的分词结果
         self.system_prompt_ids = self.tokenizer.encode(
-            "<|im_start|>system\nYou are a helpful knowledgeable and precise biomedical assistant.\
-            <|im_end|>\n<|im_start|>user\n",
+            "<|im_start|>system\nYou are a helpful knowledgeable and precise biomedical assistant.<|im_end|>\n<|im_start|>user\n",
             add_special_tokens=False,
         )
         self.assistant_start_ids = self.tokenizer.encode(

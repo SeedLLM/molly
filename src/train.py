@@ -546,6 +546,8 @@ def main():
                         choices=['sdpa', 'flash_attention_2'],
                         help="FlashAttn Implementation, support none or fa2")
 
+    parser.add_argument("dataloader_pin_memory", action="store_true")
+
     # Add DeepSpeed arguments
     parser = deepspeed.add_config_arguments(parser)
     args = parser.parse_args()
