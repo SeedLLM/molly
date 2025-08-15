@@ -79,7 +79,20 @@ if __name__ == "__main__":
     files = [
         "/tos-bjml-ai4agr/lijinzhe/dataset/BioMLLM/TargetTask0808/val_10_task.parquet",
         "/tos-bjml-ai4agr/lijinzhe/dataset/BioMLLM/TargetTask0808/train_10_task.parquet",
-        "/tos-bjml-ai4agr/lijinzhe/dataset/BioMLLM/TargetTask0808/train_10_task_wos3.parquet"
+        "/tos-bjml-ai4agr/lijinzhe/dataset/BioMLLM/TargetTask0808/train_10_task_wos3.parquet",
+        "/fs-computility/ai4agr/lijinzhe/code/BioEval/filtered_tasks.parquet",
+        "/tos-bjml-ai4agr/lijinzhe/dataset/BioMLLM/Ablation/DNA/val_dna_task.parquet",
+        "/tos-bjml-ai4agr/lijinzhe/dataset/BioMLLM/Ablation/DNA/train_dna_task.parquet",
+        "/tos-bjml-ai4agr/lijinzhe/dataset/BioMLLM/Ablation/RNA/train_rna_task.parquet",
+        "/tos-bjml-ai4agr/lijinzhe/dataset/BioMLLM/Ablation/RNA/val_rna_task.parquet",
+        "/tos-bjml-ai4agr/lijinzhe/dataset/BioMLLM/Ablation/Protein/val_protein_task.parquet",
+        "/tos-bjml-ai4agr/lijinzhe/dataset/BioMLLM/Ablation/Protein/train_protein_task.parquet",
+        "/tos-bjml-ai4agr/lijinzhe/dataset/BioMLLM/Ablation/DNA_RNA/train_dna_rna_task.parquet",
+        "/tos-bjml-ai4agr/lijinzhe/dataset/BioMLLM/Ablation/DNA_RNA/val_dna_rna_task.parquet",
+        "/tos-bjml-ai4agr/lijinzhe/dataset/BioMLLM/Ablation/DNA_Protein/val_dna_protein_task.parquet",
+        "/tos-bjml-ai4agr/lijinzhe/dataset/BioMLLM/Ablation/DNA_Protein/train_dna_protein_task.parquet",
+        "/tos-bjml-ai4agr/lijinzhe/dataset/BioMLLM/Ablation/RNA_Protein/val_rna_protein_task.parquet",
+        "/tos-bjml-ai4agr/lijinzhe/dataset/BioMLLM/Ablation/RNA_Protein/train_rna_protein_task.parquet",
         # '/tos-bjml-ai4agr/lijinzhe/dataset/BioMLLM/TargetTask0729/training/train_wo_s3_all.parquet'
     ]
 

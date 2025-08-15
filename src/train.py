@@ -89,6 +89,7 @@ def setup_model_and_optimizer(args, tokenizer):
         # pdb.set_trace()
         # https://github.com/huggingface/transformers/issues/38667
         with time_count("Loaded dna rna model"):
+            print(current_device, "dna/rna")
             dna_rna_model = AutoModelForMaskedLM.from_pretrained(
                 args.dna_rna_model_path,
                 torch_dtype=torch.bfloat16,

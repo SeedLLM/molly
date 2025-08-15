@@ -96,8 +96,7 @@ class OmicsOne(nn.Module):
                 if start_pos == -1:
                     continue
                 k = min(max_tokens, emb.size(1))
-                hidden_states[b,
-                              start_pos + 1:start_pos + 1 + k] = emb[idx, :k]
+                hidden_states[b, start_pos + 1:start_pos + 1 + k] = emb[idx, :k]
 
         batch_size = hidden_states.shape[0]
 

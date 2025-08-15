@@ -1,18 +1,18 @@
 enable_list="multimodal model.model.embed_tokens model.model.layers model.lm_head"
-experiment_name="Qwen3_8B_Omics_sft_0811_10_task_ws3_exp1"
+experiment_name="Qwen3_4B_Omics_sft_dna_task_exp1"
 output_path="/tos-bjml-ai4agr/lijinzhe/BioMLLM/RES_Model/${experiment_name}"
 
 options="--experiment-name $experiment_name \
 --output_dir $output_path \
---text-model-path /tos-bjml-ai4agr/lijinzhe/BioMLLM/Qwen3-8B \
+--text-model-path /tos-bjml-ai4agr/lijinzhe/BioMLLM/Qwen3-4B \
 --dna-rna-model-path /tos-bjml-ai4agr/lijinzhe/BioModel/nucleotide-transformer/  \
 --dna-rna-k-tokens 128 \
 --protein-model-path /tos-bjml-ai4agr/lijinzhe/BioMLLM/esm2_t33_650M_UR50D/ \
 --protein-k-tokens 128 \
 --device cuda \
 --freeze-bio \
---train-dataset-path /tos-bjml-ai4agr/lijinzhe/dataset/BioMLLM/TargetTask0808/train_10_task_wos3.parquet \
---eval-dataset-path /tos-bjml-ai4agr/lijinzhe/dataset/BioMLLM/TargetTask0808/val_10_task.parquet \
+--train-dataset-path /tos-bjml-ai4agr/lijinzhe/dataset/BioMLLM/Ablation/DNA/train_dna_task.parquet \
+--eval-dataset-path /tos-bjml-ai4agr/lijinzhe/dataset/BioMLLM/Ablation/DNA/val_dna_task.parquet \
 --max-len 1024 \
 --max-src-len 1024 \
 --eval-max-len 1024 \
@@ -21,9 +21,9 @@ options="--experiment-name $experiment_name \
 --mode sft \
 --per_device_train_batch_size 4 \
 --per_device_eval_batch_size 4 \
---read-nums 712983 \
---eval-read-nums 51276 \
---num_train_epochs 3 \
+--read-nums 283730 \
+--eval-read-nums 35457 \
+--num_train_epochs 5 \
 --learning_rate 3e-5 \
 --bf16 \
 --enable-list $enable_list \
@@ -52,7 +52,7 @@ options="--experiment-name $experiment_name \
 # --load-pretrained \
 
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
-deepspeed --include localhost:0,1,2,3,4,5,6,7 \
+deepspeed --include localhost:0,1,2,3 \
 src/train.py \
 --deepspeed_config src/configs/ds_z2_config.json \
 $options

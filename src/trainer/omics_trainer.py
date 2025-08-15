@@ -46,6 +46,8 @@ class OmicsTrainer(Trainer):
 
         # 保存tokenizer作为属性以保持向后兼容
         self.tokenizer = tokenizer
+        init_args = args
+        args.dataloader_pin_memory = False
 
         # 只保留TrainingArguments支持的参数
         training_args_params = inspect.signature(TrainingArguments).parameters
@@ -57,6 +59,7 @@ class OmicsTrainer(Trainer):
         training_args = TrainingArguments(**training_args_dict)
 
         args = training_args
+        print(args.dataloader_pin_memory, "show dataloader_pin_memory")
 
         super().__init__(
             model=model,
@@ -69,7 +72,7 @@ class OmicsTrainer(Trainer):
             compute_metrics=compute_metrics,
             callbacks=[
                 EarlyStoppingCallback(
-                    early_stopping_patience=getattr(args, "early_stopping_patience", 3),
+                    early_stopping_patience=getattr(init_args, "early_stopping_patience", 3),
                 )
             ],
             optimizers=optimizers,

@@ -166,25 +166,26 @@ class MultiModalInfer:
 
         print(f"Loading base Qwen model from {self.args.text_model_path}")
         qwen_model = AutoModelForCausalLM.from_pretrained(
-            self.args.text_model_path,
+            args.text_model_path,
+            torch_dtype="auto",
             trust_remote_code=True,
-            torch_dtype=torch.bfloat16,
         )
-        self.model.model.load_state_dict(qwen_model.state_dict())
-        del qwen_model
+        self.model.model = qwen_model
 
         print(f"Loading NT model from {self.args.dna_rna_model_path}")
         dna_rna_model = AutoModelForMaskedLM.from_pretrained(
-            self.args.dna_rna_model_path, trust_remote_code=True
+            args.dna_rna_model_path,
+            torch_dtype=torch.bfloat16,
+            trust_remote_code=True,
         )
-        self.model.dna_rna_model.load_state_dict(dna_rna_model.state_dict())
-        del dna_rna_model
+        self.model.dna_rna_model = dna_rna_model
 
         protein_model = AutoModelForMaskedLM.from_pretrained(
-            self.args.protein_model_path, trust_remote_code=True
+            args.protein_model_path,
+            torch_dtype=torch.bfloat16,
+            trust_remote_code=True,
         )
-        self.model.protein_model.load_state_dict(protein_model.state_dict())
-        del protein_model
+        self.model.protein_model = protein_model
 
         # 检查是否使用LoRA
         if self.args.use_lora:
@@ -277,6 +278,10 @@ class MultiModalInfer:
                         top_k=self.args.top_k,
                         repetition_penalty=self.args.repetition_penalty,
                     )
+                # input_text = self.text_tokenizer.batch_decode(
+                #     batch["input_ids"].to(self.device), skip_special_tokens=True
+                # )
+                # print("Input text:", input_text)
 
                 decoded = self.text_tokenizer.batch_decode(
                     outputs, skip_special_tokens=True
@@ -285,26 +290,16 @@ class MultiModalInfer:
                 for i, value in enumerate(decoded):
                     sample_data = {
                         "decoded_output": value,
-                        "input": batch["input"][i],  # Get the input for the i-th sample
-                        "gt_output": batch["raw_output"][
-                            i
-                        ],  # Get the ground truth output for the i-th sample
-                        "gt_label": batch["raw_label"][
-                            i
-                        ],  # Get the label for the i-th sample
-                        "task": batch["raw_task"][
-                            i
-                        ],  # Get the task for the i-th sample
-                        "kind": batch["raw_kind"][
-                            i
-                        ],  # Get the kind for the i-th sample
+                        "input": batch["input"][i],
+                        "gt_output": batch["raw_output"][i], 
+                        "gt_label": batch["raw_label"][i],
+                        "task": batch["raw_task"][i],
+                        "kind": batch["raw_kind"][i],
                     }
 
                     # Write the sample data to the JSON file
                     json.dump(sample_data, json_file, ensure_ascii=False)
-                    json_file.write(
-                        "\n"
-                    )  # Add a newline for better separation between records
+                    json_file.write("\n")
                     json_file.flush()
 
         json_file.close()
