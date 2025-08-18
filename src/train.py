@@ -234,6 +234,10 @@ def main():
         choices=["swanlab", "tensorboard", "wandb", "mlflow", "neptune"],
         help="Reporting tool(s) for logging",
     )
+    parser.add_argument("--swanlab-mode",
+                        type=str,
+                        default="local",
+                        help="Swanlab mode: cloud local")
     parser.add_argument("--swanlab-team",
                         type=str,
                         default=None,

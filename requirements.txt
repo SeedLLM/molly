@@ -26,3 +26,4 @@ pyarrow
 fastparquet
 packaging
 ninja
+swanlab[dashboard]

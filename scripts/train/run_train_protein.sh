@@ -13,13 +13,13 @@ options="--experiment-name $experiment_name \
 --freeze-bio \
 --train-dataset-path /tos-bjml-ai4agr/lijinzhe/dataset/BioMLLM/Ablation/Protein/train_protein_task.parquet \
 --eval-dataset-path /tos-bjml-ai4agr/lijinzhe/dataset/BioMLLM/Ablation/Protein/val_protein_task.parquet \
---max-len 2048 \
---max-src-len 2048 \
---eval-max-len 2048 \
---eval-max-src-len 2048 \
+--max-len 3072 \
+--max-src-len 3072 \
+--eval-max-len 3072 \
+--eval-max-src-len 3072 \
 --dataloader_num_workers 8 \
 --mode sft \
---per_device_train_batch_size 4 \
+--per_device_train_batch_size 2 \
 --per_device_eval_batch_size 4 \
 --read-nums 100388 \
 --eval-read-nums 9913 \
@@ -36,6 +36,7 @@ options="--experiment-name $experiment_name \
 --save_trainable False \
 --save-total-limit 50 \
 --swanlab \
+--swanlab-mode cloud \
 --swanlab-team BioMLLM_report \
 --swanlab-project BioMLLM \
 --report_to swanlab \

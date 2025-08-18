@@ -214,8 +214,8 @@ if __name__ == "__main__":
     # convert_kegg_parquet_format(src_list, dst_file)
     # convert_bioreason_vec_format(src_list, dst_file)
     src_paths = (
-        "/fs-computility/ai4agr/lijinzhe/code/BioMLLM_V2/res/inference/Qwen3_4B_Omics_sft_protein_task_exp1_5epoch"
+        "/fs-computility/ai4agr/lijinzhe/code/BioMLLM_V2/res/inference/Qwen3_4B_Omics_sft_dna_protein_task_exp2_5epoch"
     )
     # dst_path = "/fs-computility/ai4agr/lijinzhe/code/BioMLLM_V2/res/bio_instruct_judge/Omics_sft_0805_exp1_16k.json"
-    dst_path = "/fs-computility/ai4agr/lijinzhe/code/BioMLLM_V2/res/bio_instruct_judge/Qwen3_4B_Omics_sft_protein_task_exp1_5epoch.json"
+    dst_path = "/fs-computility/ai4agr/lijinzhe/code/BioMLLM_V2/res/bio_instruct_judge/Qwen3_4B_Omics_sft_dna_protein_task_exp2_5epoch.json"
     convert_multi_json(src_paths, dst_path)
