@@ -17,6 +17,9 @@ from transformers import AutoModel, AutoModelForMaskedLM
 from train import setup_dataloaders, setup_tokenizers
 from utils import get_current_device
 
+import multiprocessing as mp
+mp.set_start_method('spawn', force=True)
+
 
 def parse_args():
     parser = ArgumentParser()
@@ -56,26 +59,31 @@ def parse_args():
 
 
 def setup_models(args):
-    current_device = get_current_device()
-
     text_model = AutoModel.from_pretrained(
         args.text_model_path,
         torch_dtype=torch.bfloat16,
         trust_remote_code=True,
-        device_map=current_device,
-    )
+        # device_map=current_device,      # 删掉
+    ).cuda()
+
     dna_rna_model = AutoModelForMaskedLM.from_pretrained(
         args.dna_rna_model_path,
         torch_dtype=torch.float32,
         trust_remote_code=True,
-        device_map=current_device,
-    )
+        # device_map=current_device,      # 删掉
+    ).cuda()
+
     protein_model = AutoModelForMaskedLM.from_pretrained(
         args.protein_model_path,
         torch_dtype=torch.float32,
         trust_remote_code=True,
-        device_map=current_device,
-    )
+        # device_map=current_device,      # 删掉
+    ).cuda()
+
+    # --- 新增：包 DataParallel ---
+    text_model     = torch.nn.DataParallel(text_model)
+    dna_rna_model  = torch.nn.DataParallel(dna_rna_model)
+    protein_model  = torch.nn.DataParallel(protein_model)
 
     return text_model, dna_rna_model, protein_model
 
@@ -102,125 +110,109 @@ def encode_text(model, input_ids, attention_mask):
 
 
 @torch.no_grad()
-def encode_omics(model, ids, seq_type, k_tokens):
-    """
-    ids: [B, L_proj] 已 padding/truncate 到 k_tokens
-    返回该条序列的 embedding（取 [CLS] 或 mean-pooling）
-    """
-    ids = ids.to(model.device)
-    attention_mask = (ids != 1).long().to(model.device)  # [B, L_proj]
-    out = model(ids, output_hidden_states=True, attention_mask=attention_mask)
-    hidden = out.hidden_states[-1]  # [B, L_proj, D]
-    # 简单做法：mean-pool
-    emb = hidden.mean(dim=1).squeeze(0)  # [D]
-    return emb
+def encode_omics_batch(model, ids, mask):
+    """批量处理omics序列编码"""
+    # 确保输入ID保持整数类型（嵌入层需要整数输入）
+    # 确保掩码是浮点数类型（注意力计算需要浮点数）
+    mask = mask.float()
+    
+    out = model(ids, attention_mask=mask, output_hidden_states=True)
+    hidden = out.hidden_states[-1]  # [B, L, D]
+    
+    # 使用注意力掩码进行加权平均
+    mask_expanded = mask.unsqueeze(-1).to(hidden.dtype)
+    weighted_sum = (hidden * mask_expanded).sum(dim=1)
+    seq_lengths = mask_expanded.sum(dim=1).clamp(min=1e-9)
+    emb = weighted_sum / seq_lengths
+    
+    # 将输出转换为bfloat16以匹配文本嵌入
+    return emb.to(torch.bfloat16)
 
 
-@torch.no_grad()
-def embed_text(args, text_model, dna_rna_model, protein_model, sample):
-    device = text_model.device
-
-    input_ids = sample["input_ids"].unsqueeze(0).to(text_model.device)
-
-    if (input_ids >= text_model.config.vocab_size).any():
-        print(
-            f"Warning: input_ids contains out-of-range tokens: {input_ids[input_ids >= text_model.config.vocab_size]}"
-        )
-
-    omic_ids = sample["omic_ids"]
-
-    # 1. text
-    attention_mask = sample["attention_mask"].unsqueeze(0).to(text_model.device)
-    text_emb = encode_text(text_model, input_ids, attention_mask)
-
-    # 2. omics
-    omic_ids = sample["omic_ids"].to(device)  # [N_seq, L_proj]
-    omic_info = sample["omic_info_list"]  # list of dict
-
-    dna_rna_embs, protein_embs = [], []
-    for i, info in enumerate(omic_info):
-        seq_type = info["type"]
-        ids = omic_ids[i].unsqueeze(0)  # [1, L_proj]
-        if seq_type in {"dna", "rna"}:
-            dna_rna_embs.append(
-                encode_omics(dna_rna_model, ids, seq_type, args.dna_rna_k_tokens)
-            )
-        elif seq_type == "protein":
-            protein_embs.append(
-                encode_omics(protein_model, ids, seq_type, args.protein_k_tokens)
-            )
-        else:  # pad 等
-            pass
-
-    # 取平均
-    if dna_rna_embs:
-        dna_rna_emb = torch.stack(dna_rna_embs).mean(0)  # [D_dna_rna]
-    else:
-        dna_rna_emb = torch.zeros(text_model.config.hidden_size, device=device)
-
-    if protein_embs:
-        protein_emb = torch.stack(protein_embs).mean(0)  # [D_protein]
-    else:
-        protein_emb = torch.zeros(text_model.config.hidden_size, device=device)
-
-    # 3. 拼接
-    concat = torch.cat(
-        [text_emb, dna_rna_emb.unsqueeze(0), protein_emb.unsqueeze(0)], dim=1
-    )  # [1, D_text + D_dna_rna + D_protein]
-    return concat
-
-
-# 4. 新增 batch 推理函数（放在 embed_text 后面即可）
 @torch.no_grad()
 def embed_text_batch(args, text_model, dna_rna_model, protein_model, batch):
-    device = text_model.device
+    device = text_model.module.device
     B = batch["input_ids"].size(0)
 
-    # 1. text
+    # 1. 文本嵌入
     text_emb = encode_text(
-        text_model, batch["input_ids"].to(device), batch["attention_mask"].to(device)
-    )  # [B, D]
+        text_model, 
+        batch["input_ids"].to(device, non_blocking=True), 
+        batch["attention_mask"].to(device, non_blocking=True)
+    )  # [B, D_text]
 
-    # 2. omics
-    omic_ids = batch["omic_ids"].to(device)  # [B, N_seq, L_proj]
-    flat_ids = omic_ids.view(-1, omic_ids.size(-1))  # [B*N_seq, L_proj]
+    # 2. 处理omics数据
+    omic_ids = batch["omic_ids"].to(device, non_blocking=True)  # [B, N_seq, L_proj]
+    omic_mask = (omic_ids != 1).long().to(device, non_blocking=True)  # 填充token的掩码
+    
+    # 展平批次和序列维度
+    flat_omic_ids = omic_ids.view(-1, omic_ids.size(-1))  # [B*N_seq, L_proj]
+    flat_omic_mask = omic_mask.view(-1, omic_mask.size(-1))  # [B*N_seq, L_proj]
 
-    # 构造「样本 id」索引：0,0,...,1,1,...,2,2,... 长度 = B*N_seq
-    N_seq = omic_ids.size(1)
-    sample_idx = torch.arange(B, device=device).repeat_interleave(N_seq)
-
-    # 拉平 info
-    omic_infos = [info for sub in batch["omic_info_list"] for info in sub]
-
-    def encode_subset(model, idx_list, k):
-        if len(idx_list) == 0:
-            return torch.zeros(B, text_model.config.hidden_size, device=device)
-        sub_ids = flat_ids[idx_list]
-        mask = (sub_ids != 1).long()
-        out = model(
-            sub_ids, attention_mask=mask, output_hidden_states=True
-        ).hidden_states[-1]
-        sub_emb = out.mean(dim=1)  # [len(idx_list), D]
-
-        # 用 sample_idx 把同一样本的向量平均
-        idx_tensor = sample_idx[idx_list]  # [len(idx_list)]
-        out_emb = torch.zeros(B, sub_emb.size(-1), device=device)
-        count = torch.zeros(B, 1, device=device)
-
-        out_emb.scatter_add_(0, idx_tensor.unsqueeze(-1).expand_as(sub_emb), sub_emb)
-        count.scatter_add_(0, idx_tensor.unsqueeze(-1), torch.ones_like(sub_emb[:, :1]))
-
-        return out_emb / count.clamp(min=1)  # [B, D]
-
-    dna_rna_idx = [
-        i for i, info in enumerate(omic_infos) if info["type"] in {"dna", "rna"}
+    # 过滤pad
+    valid_mask = (flat_omic_ids != 1).any(dim=1)
+    flat_omic_ids = flat_omic_ids[valid_mask]
+    flat_omic_mask = flat_omic_mask[valid_mask]
+    
+    # 获取每个序列的类型信息
+    omic_infos = [
+        info for sublist in batch["omic_info_list"]
+        for info in sublist
     ]
-    protein_idx = [i for i, info in enumerate(omic_infos) if info["type"] == "protein"]
+    seq_types = [info["type"] for info in omic_infos]
+    
+    # 分离DNA/RNA和蛋白质序列
+    dna_rna_indices = [i for i, st in enumerate(seq_types) if st in {"dna", "rna"}]
+    protein_indices = [i for i, st in enumerate(seq_types) if st == "protein"]
+    
+    # 初始化输出张量
+    dna_rna_emb = torch.zeros(B, text_emb.size(-1), device=device, dtype=text_emb.dtype)
+    protein_emb = torch.zeros(B, text_emb.size(-1), device=device, dtype=text_emb.dtype)
+    
+    # 批量处理DNA/RNA序列
+    if dna_rna_indices:
+        dna_rna_ids = flat_omic_ids[dna_rna_indices]
+        dna_rna_mask = flat_omic_mask[dna_rna_indices]
+        print("DNA/RNA ids  min/max:", dna_rna_ids.min().item(), dna_rna_ids.max().item())
 
-    dna_rna_emb = encode_subset(dna_rna_model, dna_rna_idx, args.dna_rna_k_tokens)
-    protein_emb = encode_subset(protein_model, protein_idx, args.protein_k_tokens)
+        dna_rna_embs = encode_omics_batch(dna_rna_model, dna_rna_ids, dna_rna_mask)
+        
+        # 将嵌入向量映射回原始样本
+        batch_indices = torch.tensor([i // omic_ids.size(1) for i in dna_rna_indices], 
+                                    device=device)
+        dna_rna_emb.scatter_add_(0, 
+                                batch_indices.unsqueeze(-1).expand_as(dna_rna_embs), 
+                                dna_rna_embs)
+        
+        # 计算每个样本的序列数量用于归一化
+        seq_counts = torch.zeros(B, device=device)
+        seq_counts.scatter_add_(0, batch_indices, torch.ones_like(batch_indices, dtype=torch.float))
+        dna_rna_emb = dna_rna_emb / seq_counts.clamp(min=1).unsqueeze(-1)
+    
+    # 批量处理蛋白质序列
+    if protein_indices:
+        protein_ids = flat_omic_ids[protein_indices]
+        protein_mask = flat_omic_mask[protein_indices]
+        print("Protein ids  min/max:", protein_ids.min().item(), protein_ids.max().item())
 
-    return torch.cat([text_emb, dna_rna_emb, protein_emb], dim=1)
+        protein_embs = encode_omics_batch(protein_model, protein_ids, protein_mask)
+        
+        # 将嵌入向量映射回原始样本
+        batch_indices = torch.tensor([i // omic_ids.size(1) for i in protein_indices], 
+                                    device=device)
+        protein_emb.scatter_add_(0, 
+                                batch_indices.unsqueeze(-1).expand_as(protein_embs), 
+                                protein_embs)
+        
+        # 计算每个样本的序列数量用于归一化
+        seq_counts = torch.zeros(B, device=device)
+        seq_counts.scatter_add_(0, batch_indices, torch.ones_like(batch_indices, dtype=torch.float))
+        protein_emb = protein_emb / seq_counts.clamp(min=1).unsqueeze(-1)
+
+    # 3. 拼接所有嵌入
+    concat_emb = torch.cat([text_emb, dna_rna_emb, protein_emb], dim=1)
+    
+    return concat_emb
 
 
 # pylint: disable=too-many-statements
@@ -235,7 +227,10 @@ def main():
 
     # ---------- 2. 模型 ----------
     text_model, dna_rna_model, protein_model = setup_models(args)
-    text_model.resize_token_embeddings(len(tokenizer))
+    text_model.module.resize_token_embeddings(len(tokenizer))
+    dna_rna_model.module.resize_token_embeddings(len(dna_rna_tokenizer))
+    protein_model.module.resize_token_embeddings(len(protein_tokenizer))
+
     text_model.eval()
     dna_rna_model.eval()
     protein_model.eval()
@@ -245,7 +240,7 @@ def main():
         out = {}
         tensor_keys = {"input_ids", "attention_mask"}
         pad_keys = {"omic_ids"}
-        list_keys = {"task_name"}  # 把 task_name 当成 list 处理即可
+        list_keys = {"task", "omic_info_list"}
 
         for k in batch[0]:
             if k in tensor_keys:
@@ -264,10 +259,10 @@ def main():
                         )
                         padded.append(torch.cat([t, pad_t]))
                     else:
-                        padded.append(t[:max_n])
+                        padded.append(t)
                 out[k] = torch.stack(padded)
             elif k in list_keys:
-                out[k] = [s[k] for s in batch]  # 保留 list
+                out[k] = [s[k] for s in batch]
             else:
                 out[k] = [s[k] for s in batch]
 
@@ -277,49 +272,51 @@ def main():
         train_dataset,
         batch_size=args.embed_batch_size,
         shuffle=False,
-        num_workers=args.dataloader_num_workers,
+        num_workers=0,
+        # num_workers=args.dataloader_num_workers,
         collate_fn=collate,
+        pin_memory=False,
+        persistent_workers=False,
     )
+    
     # ---------- 4. batch 推理 ----------
     all_embs = []
+    all_tasks = []
+    
     for idx, batch in enumerate(tqdm(loader, desc="Embedding")):
         if args.read_nums and idx * args.embed_batch_size >= args.read_nums:
             break
+            
         emb = embed_text_batch(args, text_model, dna_rna_model, protein_model, batch)
-        all_embs.append(emb.cpu())  # 省显存
+        all_embs.append(emb.cpu())
+        all_tasks.extend(batch["task"][:emb.size(0)])  # 记录对应的task名称
+    
     embeddings = torch.cat(all_embs, dim=0)[: args.read_nums]
+    task_names = all_tasks[:len(embeddings)]
 
     # 存储 embeddings
-    embeddings = embeddings.numpy()  # 转为 numpy 数组
-    np.save(Path(args.output_dir) / "embeddings.npy", embeddings)
+    embeddings = embeddings.numpy()
+    output_path = Path(args.output_dir)
+    output_path.mkdir(parents=True, exist_ok=True)
+    np.save(output_path / "embeddings.npy", embeddings)
 
     # ---------- 5. UMAP ----------
-    embeddings_gpu = cp.asarray(embeddings)
-    scaler = StandardScaler()
-    embeddings_scaled = scaler.fit_transform(embeddings_gpu)
-    reducer = UMAP(n_components=2, random_state=42)
-    embedding_2d = reducer.fit_transform(embeddings_scaled)
+    if not args.skip_eval:
+        embeddings_gpu = cp.asarray(embeddings)
+        scaler = StandardScaler()
+        embeddings_scaled = scaler.fit_transform(embeddings_gpu)
+        reducer = UMAP(n_components=2, random_state=42)
+        embedding_2d = reducer.fit_transform(embeddings_scaled)
 
-    # 收集 task_name
-    task_names = []
-    for b in loader:
-        task_names.extend(b["task_name"])
-        if args.read_nums and len(task_names) >= args.read_nums:
-            task_names = task_names[: args.read_nums]
-            break
-    task_names = task_names[: len(embedding_2d)]
-
-    os.makedirs(args.output_dir, exist_ok=True)
-
-    df = pd.DataFrame(
-        {
-            "task_name": task_names,
-            "projection_x": cp.asnumpy(embedding_2d[:, 0]),
-            "projection_y": cp.asnumpy(embedding_2d[:, 1]),
-        }
-    )
-    parquet_path = Path(args.output_dir) / "umap_projection.parquet"
-    df.to_parquet(parquet_path, index=False)
+        df = pd.DataFrame(
+            {
+                "task": task_names,
+                "projection_x": cp.asnumpy(embedding_2d[:, 0]),
+                "projection_y": cp.asnumpy(embedding_2d[:, 1]),
+            }
+        )
+        parquet_path = output_path / "umap_projection.parquet"
+        df.to_parquet(parquet_path, index=False)
 
 
 if __name__ == "__main__":
