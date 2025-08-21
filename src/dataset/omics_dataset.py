@@ -8,7 +8,7 @@ import numpy as np
 import pandas as pd
 import torch
 from torch.utils.data import Dataset
-from tqdm.contrib.concurrent import process_map
+from tqdm import tqdm
 
 
 @dataclass
@@ -106,13 +106,13 @@ class OmicsDataset(Dataset):
         print(
             f"Preprocessing {len(df)} samples with {num_workers} workers ...")
 
-        self.data = process_map(
-            partial(self._preprocess_sample, tokenizer=self.tokenizer),
-            df.to_dict("records"),
-            max_workers=num_workers,
-            chunksize=max(1,
-                          len(df) // (num_workers * 4)),
-            desc="Preprocessing",
+        records = df.to_dict("records")
+        self.data = list(
+            tqdm(
+                map(partial(self._preprocess_sample, tokenizer=self.tokenizer), records),
+                total=len(records),
+                desc="Preprocessing",
+            )
         )
 
         print(f"Loaded {len(self.data)} samples from parquet file")
