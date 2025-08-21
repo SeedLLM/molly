@@ -173,7 +173,6 @@ def setup_dataloaders(args, tokenizer, dna_rna_tokenizer, protein_tokenizer):
         shuffle=True,
         seed=42,
         type="Train",
-        num_workers=args.dataloader_num_workers,
     )
 
     # 创建评估数据集（如果需要）
@@ -202,7 +201,6 @@ def setup_dataloaders(args, tokenizer, dna_rna_tokenizer, protein_tokenizer):
             shuffle=False,
             seed=42,
             type="Eval",
-            num_workers=args.dataloader_num_workers,
         )
 
     return train_dataset, eval_dataset
@@ -357,12 +355,6 @@ def main():
         type=int,
         default=None,
         help="Number of evaluation samples to read",
-    )
-    parser.add_argument(
-        "--dataloader_num_workers",
-        type=int,
-        default=0,
-        help="Number of workers for data loading",
     )
 
     # Dataset compatibility parameters

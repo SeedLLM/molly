@@ -38,7 +38,6 @@ class OmicsDataset(Dataset):
         read_nums=None,
         shuffle=False,
         seed=42,
-        num_workers=0,
         type=None,
         **kwargs,
     ):
@@ -53,7 +52,6 @@ class OmicsDataset(Dataset):
             read_nums: Maximum number of samples to read.
             shuffle: Whether to shuffle the dataset.
             seed: Random seed for shuffling.
-            num_workers: Number of workers for data loading.
             type: Dataset type. "Train / Eval" or "Test"
             **kwargs: Additional arguments.
         """
@@ -67,7 +65,6 @@ class OmicsDataset(Dataset):
         self.dataset_config = dataset_config
         self.shuffle = shuffle
         self.seed = seed
-        self.num_workers = num_workers
 
         # Configuration parameters
         self.max_len = dataset_config.max_len
@@ -102,9 +99,6 @@ class OmicsDataset(Dataset):
         if self.shuffle:
             rng = np.random.default_rng(self.seed)
             df = df.sample(frac=1, random_state=rng).reset_index(drop=True)
-
-        print(
-            f"Preprocessing {len(df)} samples with {num_workers} workers ...")
 
         records = df.to_dict("records")
         self.data = list(
