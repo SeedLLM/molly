@@ -10,6 +10,9 @@ import torch
 from torch.utils.data import Dataset
 from tqdm.contrib.concurrent import process_map
 
+from concurrent.futures import ThreadPoolExecutor
+from tqdm import tqdm
+
 
 @dataclass
 class DatasetConfig:
@@ -106,14 +109,24 @@ class OmicsDataset(Dataset):
         print(
             f"Preprocessing {len(df)} samples with {num_workers} workers ...")
 
-        self.data = process_map(
-            partial(self._preprocess_sample, tokenizer=self.tokenizer),
-            df.to_dict("records"),
-            max_workers=num_workers,
-            chunksize=max(1,
-                          len(df) // (num_workers * 4)),
-            desc="Preprocessing",
-        )
+        # self.data = process_map(
+        #     partial(self._preprocess_sample, tokenizer=self.tokenizer),
+        #     df.to_dict("records"),
+        #     max_workers=num_workers,
+        #     # chunksize = 1000,
+        #     chunksize=max(1, len(df) // (num_workers * 4)),
+        #     desc="Preprocessing",
+        # )
+
+        with ThreadPoolExecutor(max_workers=num_workers) as ex:
+            self.data = list(
+                tqdm(ex.map(
+                        partial(self._preprocess_sample, tokenizer=self.tokenizer),
+                        df.to_dict("records"),
+                        chunksize=max(1, len(df) // (num_workers * 4))),
+                    total=len(df),
+                    desc="Preprocessing")
+            )
 
         print(f"Loaded {len(self.data)} samples from parquet file")
 
