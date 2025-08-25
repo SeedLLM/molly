@@ -8,7 +8,7 @@ import numpy as np
 import pandas as pd
 import torch
 from torch.utils.data import Dataset
-from tqdm.contrib.concurrent import process_map
+from tqdm import tqdm
 
 from concurrent.futures import ThreadPoolExecutor
 from tqdm import tqdm
@@ -41,7 +41,6 @@ class OmicsDataset(Dataset):
         read_nums=None,
         shuffle=False,
         seed=42,
-        num_workers=0,
         type=None,
         **kwargs,
     ):
@@ -56,7 +55,6 @@ class OmicsDataset(Dataset):
             read_nums: Maximum number of samples to read.
             shuffle: Whether to shuffle the dataset.
             seed: Random seed for shuffling.
-            num_workers: Number of workers for data loading.
             type: Dataset type. "Train / Eval" or "Test"
             **kwargs: Additional arguments.
         """
@@ -70,7 +68,6 @@ class OmicsDataset(Dataset):
         self.dataset_config = dataset_config
         self.shuffle = shuffle
         self.seed = seed
-        self.num_workers = num_workers
 
         # Configuration parameters
         self.max_len = dataset_config.max_len
@@ -106,27 +103,14 @@ class OmicsDataset(Dataset):
             rng = np.random.default_rng(self.seed)
             df = df.sample(frac=1, random_state=rng).reset_index(drop=True)
 
-        print(
-            f"Preprocessing {len(df)} samples with {num_workers} workers ...")
-
-        # self.data = process_map(
-        #     partial(self._preprocess_sample, tokenizer=self.tokenizer),
-        #     df.to_dict("records"),
-        #     max_workers=num_workers,
-        #     # chunksize = 1000,
-        #     chunksize=max(1, len(df) // (num_workers * 4)),
-        #     desc="Preprocessing",
-        # )
-
-        with ThreadPoolExecutor(max_workers=num_workers) as ex:
-            self.data = list(
-                tqdm(ex.map(
-                        partial(self._preprocess_sample, tokenizer=self.tokenizer),
-                        df.to_dict("records"),
-                        chunksize=max(1, len(df) // (num_workers * 4))),
-                    total=len(df),
-                    desc="Preprocessing")
+        records = df.to_dict("records")
+        self.data = list(
+            tqdm(
+                map(partial(self._preprocess_sample, tokenizer=self.tokenizer), records),
+                total=len(records),
+                desc="Preprocessing",
             )
+        )
 
         print(f"Loaded {len(self.data)} samples from parquet file")
 

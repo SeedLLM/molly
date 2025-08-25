@@ -17,7 +17,6 @@ options="--experiment-name $experiment_name \
 --max-src-len 1024 \
 --eval-max-len 1024 \
 --eval-max-src-len 1024 \
---dataloader_num_workers 8 \
 --mode sft \
 --per_device_train_batch_size 4 \
 --per_device_eval_batch_size 4 \
