@@ -85,7 +85,6 @@ class ClassificationDataset(Dataset):
         batch = {
             "labels": label_tensor
         }
-        # print(batch)
 
         # 根据model_type确认 tokenize 策略
         if self.model_type == "NT":
@@ -96,9 +95,7 @@ class ClassificationDataset(Dataset):
 
             batch.update({
                 "x1": tokenized["input_ids"].squeeze(0),
-                "mask1": tokenized["attention_mask"].squeeze(0),
-                "x2": None,
-                "mask2": None
+                "mask1": tokenized["attention_mask"].squeeze(0)
             })
         elif self.model_type == "ESM":
             assert self.protein_tokenizer is not None, "protein_tokenizer is required for ESM model"
@@ -108,9 +105,7 @@ class ClassificationDataset(Dataset):
 
             batch.update({
                 "x1": tokenized["input_ids"].squeeze(0),
-                "mask1": tokenized["attention_mask"].squeeze(0),
-                "x2": None,
-                "mask2": None
+                "mask1": tokenized["attention_mask"].squeeze(0)
             })
         elif self.model_type == "NT+ESM":
             assert self.dna_rna_tokenizer is not None, "dna_rna_tokenizer is required for NT+ESM model"

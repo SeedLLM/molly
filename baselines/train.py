@@ -46,7 +46,6 @@ class BackboneTrainConfig(TrainingArguments):
         default=2,
         metadata={"help": "Number of labels for classification"}
     )
-    bf16: bool = field(default=True, metadata={"help": "Use bfloat16 mixed precision"})
     eval_metrics: str = field(
         default="acc",
         metadata={"help": "Metric for evaluation: acc or mcc"}

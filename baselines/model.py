@@ -47,12 +47,12 @@ class BackboneWithClsHead(nn.Module):
         else:
             raise ValueError(f"Invalid model_type: {model_type}")
         
-        self.head = nn.Linear(dim, num_labels).to(torch.bfloat16)
+        self.head = nn.Linear(dim, num_labels)
 
     def _get_esm_model(self, model_name_or_path):
         esm_model = AutoModelForMaskedLM.from_pretrained(
             model_name_or_path,
-            torch_dtype=torch.bfloat16,
+            torch_dtype=torch.float32,
             trust_remote_code=True,
             device_map="cuda:0",
         )
@@ -61,7 +61,7 @@ class BackboneWithClsHead(nn.Module):
     def _get_nt_model(self, model_name_or_path):
         nt_model = AutoModelForMaskedLM.from_pretrained(
             model_name_or_path,
-            torch_dtype=torch.bfloat16,
+            torch_dtype=torch.float32,
             trust_remote_code=True,
             device_map="cuda:0",
         )
