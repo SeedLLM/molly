@@ -27,4 +27,3 @@ fastparquet
 packaging
 ninja
 swanlab[dashboard]
-evaluate

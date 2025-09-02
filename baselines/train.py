@@ -3,7 +3,7 @@ from dataclasses import dataclass, field
 from transformers import TrainingArguments, HfArgumentParser, set_seed, AutoTokenizer, Trainer, AutoModelForMaskedLM
 from dataset import ClassificationDataset, ClassificationCollator
 from model import BackboneWithClsHead
-import evaluate
+from sklearn.metrics import accuracy_score
 
 set_seed(42)
 
@@ -98,9 +98,10 @@ def get_datasets(args: BackboneTrainConfig, dna_rna_tokenizer=None, protein_toke
     return train_dataset, eval_dataset
 
 def compute_metrics(p):
-    metric = evaluate.load("accuracy")
     preds = p.predictions.argmax(-1)
-    return metric.compute(predictions=preds, references=p.label_ids)
+    labels = p.label_ids
+    acc = accuracy_score(labels, preds)
+    return {"accuracy": acc}
 
 
 
