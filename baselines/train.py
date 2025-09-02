@@ -101,7 +101,7 @@ def get_datasets(args: BackboneTrainConfig, dna_rna_tokenizer=None, protein_toke
     )
     return train_dataset, eval_dataset
 
-def get_compute_metrics_fn(task_name: str):
+def get_compute_metrics_fn(eval_name: str):
 
     def compute_acc_metrics(p):
         preds = p.predictions.argmax(-1)
@@ -115,12 +115,12 @@ def get_compute_metrics_fn(task_name: str):
         mcc = matthews_corrcoef(labels, preds)
         return {"eval_mcc": mcc}
     
-    if task_name == "acc":
+    if eval_name == "acc":
         return compute_acc_metrics
-    elif task_name == "mcc":
+    elif eval_name == "mcc":
         return compute_mcc_metrics
     else:
-        raise ValueError(f"Invalid task_name: {task_name}")
+        raise ValueError(f"Invalid eval_name: {eval_name}")
     
 
 

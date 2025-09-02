@@ -1,14 +1,14 @@
 python baselines/train.py \
-  --model_type NT+NT \
-  --task_name enhancer_promoter \
-  --eval_metrics mcc \
-  --train-dataset-path /share/appspace_data/shared_groups/yzwl_chenzh_ChenZihong_Share/omics_data/CotExp/woCOT/Enhancer-Promoter/train_Enhancer-Promoter_task.parquet \
-  --eval-dataset-path /share/appspace_data/shared_groups/yzwl_chenzh_ChenZihong_Share/omics_data/CotExp/woCOT/Enhancer-Promoter/val_Enhancer-Promoter_task.parquet \
+  --model_type ESM \
+  --task_name functionec \
+  --eval_metrics fmax \
+  --train-dataset-path /share/appspace_data/shared_groups/yzwl_chenzh_ChenZihong_Share/omics_data/CotExp/woCOT/FunctionEC/train_FunctionEC_task.parquet \
+  --eval-dataset-path /share/appspace_data/shared_groups/yzwl_chenzh_ChenZihong_Share/omics_data/CotExp/woCOT/FunctionEC/val_FunctionEC_task.parquet \
   --dna-rna-model-path /share/appspace_data/shared_groups/yzwl_chenzh_ChenZihong_Share/base_llm/nucleotide-transformer/  \
   --dna-rna-k-tokens 1024 \
   --protein-model-path /share/appspace_data/shared_groups/yzwl_chenzh_ChenZihong_Share/base_llm/esm2_t33_650M_UR50D/ \
   --protein-k-tokens 1024 \
-  --output_dir ./ckpt_hf/enhancer_promoter \
+  --output_dir ./ckpt_hf/functionec \
   --num_train_epochs 5 \
   --per_device_train_batch_size 4 \
   --per_device_eval_batch_size 4 \
@@ -20,5 +20,5 @@ python baselines/train.py \
   --save_strategy epoch \
   --dataloader_num_workers 8 \
   --load_best_model_at_end \
-  --metric_for_best_model eval_mcc \
+  --metric_for_best_model eval_fmax \
   --report_to none \

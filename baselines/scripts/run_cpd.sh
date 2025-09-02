@@ -10,8 +10,8 @@ python baselines/train.py \
   --protein-k-tokens 1024 \
   --output_dir ./ckpt_hf/cpd \
   --num_train_epochs 5 \
-  --per_device_train_batch_size 16 \
-  --per_device_eval_batch_size 16 \
+  --per_device_train_batch_size 8 \
+  --per_device_eval_batch_size 8 \
   --learning_rate 1e-4 \
   --warmup_ratio 0.1 \
   --logging_steps 50 \
