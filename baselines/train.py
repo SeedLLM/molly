@@ -3,7 +3,7 @@ from dataclasses import dataclass, field
 from transformers import TrainingArguments, HfArgumentParser, set_seed, AutoTokenizer, Trainer, AutoModelForMaskedLM
 from dataset import ClassificationDataset, ClassificationCollator
 from model import BackboneWithClsHead
-from sklearn.metrics import accuracy_score
+from sklearn.metrics import accuracy_score, matthews_corrcoef
 
 set_seed(42)
 
@@ -47,6 +47,11 @@ class BackboneTrainConfig(TrainingArguments):
         metadata={"help": "Number of labels for classification"}
     )
     bf16: bool = field(default=True, metadata={"help": "Use bfloat16 mixed precision"})
+    eval_metrics: str = field(
+        default="acc",
+        metadata={"help": "Metric for evaluation: acc or mcc"}
+    )
+    save_safetensors: bool = field(default=False, metadata={"help": "Disable safetensors to avoid shared memory issue"})
 
 
 def get_tokenizer(args: BackboneTrainConfig):
@@ -97,12 +102,27 @@ def get_datasets(args: BackboneTrainConfig, dna_rna_tokenizer=None, protein_toke
     )
     return train_dataset, eval_dataset
 
-def compute_metrics(p):
-    preds = p.predictions.argmax(-1)
-    labels = p.label_ids
-    acc = accuracy_score(labels, preds)
-    return {"accuracy": acc}
+def get_compute_metrics_fn(task_name: str):
 
+    def compute_acc_metrics(p):
+        preds = p.predictions.argmax(-1)
+        labels = p.label_ids
+        acc = accuracy_score(labels, preds)
+        return {"eval_acc": acc}
+    
+    def compute_mcc_metrics(p):
+        preds = p.predictions.argmax(-1)
+        labels = p.label_ids
+        mcc = matthews_corrcoef(labels, preds)
+        return {"eval_mcc": mcc}
+    
+    if task_name == "acc":
+        return compute_acc_metrics
+    elif task_name == "mcc":
+        return compute_mcc_metrics
+    else:
+        raise ValueError(f"Invalid task_name: {task_name}")
+    
 
 
 def main():
@@ -117,6 +137,13 @@ def main():
     model = get_model(args)
 
     train_dataset, eval_dataset = get_datasets(args, dna_rna_tokenizer, protein_tokenizer)
+
+    if args.eval_metrics == "acc":
+        compute_metrics = get_compute_metrics_fn("acc")
+    elif args.eval_metrics == "mcc":
+        compute_metrics = get_compute_metrics_fn("mcc")
+    else:
+        raise ValueError(f"Invalid eval_metrics: {args.eval_metrics}")
 
     trainer = Trainer(
         model=model,

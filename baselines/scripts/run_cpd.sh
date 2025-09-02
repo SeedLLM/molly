@@ -1,14 +1,14 @@
 python baselines/train.py \
-  --model_type ESM+ESM \
-  --task_name antibody \
-  --eval_metrics mcc \
-  --train-dataset-path /share/appspace_data/shared_groups/yzwl_chenzh_ChenZihong_Share/omics_data/CotExp/woCOT/Antibody/train_Antibody_task.parquet \
-  --eval-dataset-path /share/appspace_data/shared_groups/yzwl_chenzh_ChenZihong_Share/omics_data/CotExp/woCOT/Antibody/val_Antibody_task.parquet \
+  --model_type NT \
+  --task_name cpd\
+  --eval_metrics acc \
+  --train-dataset-path /share/appspace_data/shared_groups/yzwl_chenzh_ChenZihong_Share/omics_data/CotExp/woCOT/CPD/train_CPD_task.parquet \
+  --eval-dataset-path /share/appspace_data/shared_groups/yzwl_chenzh_ChenZihong_Share/omics_data/CotExp/woCOT/CPD/val_CPD_task.parquet \
   --dna-rna-model-path /share/appspace_data/shared_groups/yzwl_chenzh_ChenZihong_Share/base_llm/nucleotide-transformer/  \
   --dna-rna-k-tokens 1024 \
   --protein-model-path /share/appspace_data/shared_groups/yzwl_chenzh_ChenZihong_Share/base_llm/esm2_t33_650M_UR50D/ \
   --protein-k-tokens 1024 \
-  --output_dir ./ckpt_hf/antibody \
+  --output_dir ./ckpt_hf/cpd \
   --num_train_epochs 5 \
   --per_device_train_batch_size 8 \
   --per_device_eval_batch_size 8 \
@@ -21,5 +21,5 @@ python baselines/train.py \
   --bf16 \
   --dataloader_num_workers 8 \
   --load_best_model_at_end \
-  --metric_for_best_model eval_mcc \
+  --metric_for_best_model eval_acc \
   --report_to none \

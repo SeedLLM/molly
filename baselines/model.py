@@ -1,12 +1,10 @@
 import torch
 import torch.nn as nn
-from transformers import (
-    AutoModel,
-    AutoTokenizer,
-    AutoModelForMaskedLM
-)
+from transformers import AutoModelForMaskedLM
 import torch.nn.functional as F
 from transformers.modeling_outputs import SequenceClassifierOutput
+import copy
+import os
 
 
 class BackboneWithClsHead(nn.Module):
@@ -44,7 +42,7 @@ class BackboneWithClsHead(nn.Module):
             dim = 2 * self.nt1.config.hidden_size
         elif model_type == "ESM+ESM":
             self.esm1 = self._get_esm_model(esm_model)
-            self.esm2 = self._get_esm_model(esm_model)
+            self.esm2 = copy.deepcopy(self._get_esm_model(esm_model))
             dim = 2 * self.esm1.config.hidden_size
         else:
             raise ValueError(f"Invalid model_type: {model_type}")
@@ -52,7 +50,7 @@ class BackboneWithClsHead(nn.Module):
         self.head = nn.Linear(dim, num_labels).to(torch.bfloat16)
 
     def _get_esm_model(self, model_name_or_path):
-        esm_model = AutoModel.from_pretrained(
+        esm_model = AutoModelForMaskedLM.from_pretrained(
             model_name_or_path,
             torch_dtype=torch.bfloat16,
             trust_remote_code=True,
@@ -61,7 +59,7 @@ class BackboneWithClsHead(nn.Module):
         return esm_model
 
     def _get_nt_model(self, model_name_or_path):
-        nt_model = AutoModel.from_pretrained(
+        nt_model = AutoModelForMaskedLM.from_pretrained(
             model_name_or_path,
             torch_dtype=torch.bfloat16,
             trust_remote_code=True,
@@ -71,18 +69,18 @@ class BackboneWithClsHead(nn.Module):
 
 
     def _cls(self, model, x):
-        """
-        x: dict, 包含 input_ids, attention_mask 等
-        """
-        out = model(**x)
-        return out.last_hidden_state[:, 0]
+        out = model(**x, output_hidden_states=True)
+        last_hidden_state = out.hidden_states[-1]
+        return last_hidden_state[:, 0]
+
 
     def forward(self, x1, x2=None, mask1=None, mask2=None, labels=None):
         if self.model_type == "NT":
-            # x = self.tok(batch['seq'], return_tensors='pt', padding=True, truncation=True)
-            # x = {k: v.to(self.backbone.device) for k, v in x.items()}
-            # h = self._cls(self.backbone, x)
-            pass
+            x = {
+                'input_ids': x1,
+                'attention_mask': mask1
+            }
+            h = self._cls(self.backbone, x)
         elif self.model_type == "ESM":
             # x = self.tok(batch['seq'], return_tensors='pt', padding=True, truncation=True)
             # x = {k: v.to(self.backbone.device) for k, v in x.items()}
@@ -107,11 +105,6 @@ class BackboneWithClsHead(nn.Module):
             # h = torch.cat([h1, h2], dim=-1)
             pass
         elif self.model_type == "ESM+ESM":
-
-            # protein1_input_ids = batch['protein1_input_ids'].to(self.esm1.device)
-            # protein1_attention_mask = batch['protein1_attention_mask'].to(self.esm1.device)
-            # protein2_input_ids = batch['protein2_input_ids'].to(self.esm2.device)
-            # protein2_attention_mask = batch['protein2_attention_mask'].to(self.esm2.device)
             x1 = {
                 'input_ids': x1,
                 'attention_mask': mask1
@@ -123,7 +116,6 @@ class BackboneWithClsHead(nn.Module):
             h1 = self._cls(self.esm1, x1)
             h2 = self._cls(self.esm2, x2)
             h = torch.cat([h1, h2], dim=-1)
-            calculate_loss = F.cross_entropy
         else:
             raise ValueError(f"Invalid model_type: {self.model_type}")
         
@@ -131,7 +123,7 @@ class BackboneWithClsHead(nn.Module):
 
         loss = None
         if labels is not None:
-            loss = calculate_loss(logits, labels)
+            loss = F.cross_entropy(logits, labels)
 
         return SequenceClassifierOutput(
             loss=loss,
@@ -141,4 +133,3 @@ class BackboneWithClsHead(nn.Module):
     def freze_backbone(self):
         for param in self.backbone.parameters():
             param.requires_grad = False
-    

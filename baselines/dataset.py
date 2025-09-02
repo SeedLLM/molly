@@ -85,6 +85,7 @@ class ClassificationDataset(Dataset):
         batch = {
             "labels": label_tensor
         }
+        # print(batch)
 
         # 根据model_type确认 tokenize 策略
         if self.model_type == "NT":
