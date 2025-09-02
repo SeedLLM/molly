@@ -108,7 +108,7 @@ class MultiModalInfer:
 
         # ‑- Device --------------------------------------------------------------
         self.device = torch.device(
-            "cuda:0"
+            "cuda:2"
             if self.args.device == "cuda" and torch.cuda.is_available()
             else "cpu"
         )
@@ -233,6 +233,7 @@ class MultiModalInfer:
 
     def run_dataset(self):
         """Run inference sample-by-sample without padding."""
+        os.makedirs(os.path.dirname(self.args.json_file), exist_ok=True)
         with open(self.args.json_file, "a", encoding="utf-8") as json_file:
 
             test_config = DatasetConfig(

@@ -66,11 +66,6 @@ def replace_reserved_tokens(
     verbose: bool = True,
 ) -> Dict[str, int]:
     """
-    替换文本中的特殊标识：
-      <|reserved_special_token_1|> -> <dna>
-      <|reserved_special_token_2|> -> <rna>
-      <|reserved_special_token_3|> -> <protein>
-
     Args:
         input_path: 输入文件路径
         output_path: 输出文件路径
