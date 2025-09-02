@@ -11,7 +11,7 @@ from torch.utils.data import Dataset
 from tqdm import tqdm
 
 from concurrent.futures import ThreadPoolExecutor
-from tqdm import tqdm
+from utils.tools import is_main_process
 
 
 @dataclass
@@ -35,13 +35,14 @@ class OmicsDataset(Dataset):
         self,
         parquet_file: str,
         tokenizer,
-        dataset_config,
+        dataset_config:"DatasetConfig",
         dna_rna_tokenizer=None,
         protein_tokenizer=None,
         read_nums=None,
         shuffle=False,
         seed=42,
         type=None,
+        cache_file:str = '.cache/data.pt',
         **kwargs,
     ):
         """
@@ -90,6 +91,12 @@ class OmicsDataset(Dataset):
         self.assistant_start_ids = self.tokenizer.encode(
             "<|im_end|>\n<|im_start|>assistant\n", add_special_tokens=False)
 
+        # Load cache first
+        if not is_main_process() and os.path.exists(cache_file):
+            print(f'Load cache data from {cache_file}')
+            self.data = torch.load(cache_file)
+            return
+
         # Load data
         print(f"Loading parquet data from {parquet_file}")
         df = pd.read_parquet(parquet_file)
@@ -112,6 +119,10 @@ class OmicsDataset(Dataset):
             )
         )
 
+        if is_main_process():
+            print(f'Dump cache data to {cache_file}')
+            os.makedirs(os.path.dirname(cache_file), exist_ok=True)
+            torch.save(self.data, cache_file)
         print(f"Loaded {len(self.data)} samples from parquet file")
 
     def __len__(self) -> int:
