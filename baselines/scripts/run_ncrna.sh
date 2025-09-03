@@ -21,7 +21,7 @@ python baselines/train.py \
   --save_strategy epoch \
   --dataloader_num_workers 8 \
   --load_best_model_at_end \
-  --metric_for_best_model eval_auc \
+  --metric_for_best_model eval_acc \
   --report_to none \
   --label2id_path baselines/data/ncrna_labels.json \
   --multi_label \
