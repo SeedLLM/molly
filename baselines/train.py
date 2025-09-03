@@ -3,7 +3,7 @@ from dataclasses import dataclass, field
 from transformers import TrainingArguments, HfArgumentParser, set_seed, AutoTokenizer, Trainer, AutoModelForMaskedLM
 from dataset import ClassificationDataset, ClassificationCollator
 from model import BackboneWithClsHead
-from sklearn.metrics import accuracy_score, matthews_corrcoef
+from sklearn.metrics import accuracy_score, matthews_corrcoef, roc_auc_score
 import numpy as np
 import json
 
@@ -141,7 +141,6 @@ def get_compute_metrics_fn(eval_name: str):
         mcc = matthews_corrcoef(labels, preds)
         return {"eval_mcc": mcc}
 
-    
     def compute_fmax_metrics(p):
         pred_np  = p.predictions
         targ_np  = p.label_ids
@@ -187,6 +186,17 @@ def get_compute_metrics_fn(eval_name: str):
 
         return {"eval_fmax": all_f1.max().item()}
 
+    def compute_auc_metrics(p):
+        preds = 1 / (1 + np.exp(-p.predictions))
+        labels = p.label_ids
+
+        try:
+            auc = roc_auc_score(labels, preds, average='macro')
+        except ValueError as e:
+            print(f"[WARNING] AUC computation failed: {e}")
+            auc = 0.0
+
+        return {"eval_auc": auc}
         
     if eval_name == "acc":
         return compute_acc_metrics
@@ -194,6 +204,8 @@ def get_compute_metrics_fn(eval_name: str):
         return compute_mcc_metrics
     elif eval_name == "fmax":
         return compute_fmax_metrics
+    elif eval_name == "auc":
+        return compute_auc_metrics
     else:
         raise ValueError(f"Invalid eval_name: {eval_name}")
     

@@ -81,14 +81,14 @@ class ClassificationDataset(Dataset):
         # TODO: 确认能成功处理label
         if self.multi_label:
             if "EC" in label:
-                labels = label.replace("EC", "").split(",")
+                label = label.replace("EC", "")
+            labels = label.split(",")
             label_tensor = torch.zeros(len(self.label2id), dtype=torch.float)
             for lab in labels:
                 lab = lab.strip()
                 if lab in self.label2id:
                     idx = self.label2id[lab]
                     label_tensor[idx] = 1.0
-            # 检查是否至少有一个标签被设置
             if label_tensor.sum() == 0:
                 raise ValueError(f"None of the labels in {labels} are in label2id mapping.")
         else:
