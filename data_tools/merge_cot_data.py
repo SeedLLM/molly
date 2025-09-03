@@ -7,11 +7,11 @@
 import pandas as pd
 from pathlib import Path
 
-# /share/org/YZWL/yzwl_lijz/dataset_res/omics_data/CotExp/woCOT/Solubility/val_Solubility_task.parquet 
-# /share/org/YZWL/yzwl_lijz/dataset_res/omics_data/CotExp/COT/Solubility/
+# /share/org/YZWL/yzwl_lijz/dataset_res/omics_data/CotExp/woCOT/Enhancer-Promoter/val_Enhancer-Promoter_task.parquet 
+# /share/org/YZWL/yzwl_lijz/dataset_res/omics_data/CotExp/COT/Enhancer-Promoter/
 
 # 固定路径
-Kind = "Solubility"
+Kind = "Enhancer-Promoter"
 FILE1 = Path(f"/share/org/YZWL/yzwl_lijz/dataset_res/omics_data/CotExp/woCOT/{Kind}/train_{Kind}_task.parquet")
 FILE2 = Path(f"/share/org/YZWL/yzwl_lijz/dataset_res/omics_data/CotExp/COT/{Kind}/cot.parquet")
 OUT   = Path(f"/share/org/YZWL/yzwl_lijz/dataset_res/omics_data/CotExp/COT/{Kind}/train_{Kind}_cot_merged.parquet")

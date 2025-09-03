@@ -49,7 +49,7 @@ def parse_args():
     p.add_argument(
         "--parquet",
         type=Path,
-        default=Path("/share/org/YZWL/yzwl_lijz/dataset_res/omics_data/CotExp/COT/Solubility/cot.parquet"),
+        default=Path("/share/org/YZWL/yzwl_lijz/dataset_res/omics_data/CotExp/COT/Enhancer-Promoter/cot.parquet"),
         help="输入 parquet 文件路径",
     )
     p.add_argument(

@@ -142,7 +142,8 @@ def convert_dir_to_parquet(
             if "label" in obj and obj["label"] not in (None, "", {}, False):
                 label_str = obj["label"] if isinstance(obj["label"], str) else json.dumps(obj["label"], ensure_ascii=False)
             else:
-                lbl = pick(obj, ["metadata", "meta_data", "label"], "")
+                # rna_protein_interaction 需要去除一个
+                lbl = pick(obj, ["metadata", "label"], "")
                 if lbl in ("", None):
                     removed_empty_label += 1
                     continue
@@ -152,7 +153,8 @@ def convert_dir_to_parquet(
             output_str = obj.get("output") or obj.get("answer", "")
 
             # task
-            task_str = obj.get("task", "") or pick(obj, ["metadata", "meta_data", "task"], "")
+            task_str = "promoter_enhancer_interaction"
+            # task_str = obj.get("task", "") or pick(obj, ["metadata", "meta_data", "task"], "")
 
             # kind & validation
             kind_str, valid = extract_and_validate_kinds(text, markers)
@@ -189,7 +191,7 @@ def convert_dir_to_parquet(
     return df
 
 # 在这里修改任务
-Kind = "Solubility"
+Kind = "Enhancer-Promoter"
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Convert TF-M JSON arrays to a single Parquet with biomarker validation.")
     p.add_argument(
