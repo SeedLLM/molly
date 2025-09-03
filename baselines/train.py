@@ -133,11 +133,20 @@ def get_datasets(args: BackboneTrainConfig, dna_rna_tokenizer=None, protein_toke
     return train_dataset, eval_dataset
 
 
-def get_compute_metrics_fn(eval_name: str):
+def get_compute_metrics_fn(eval_name: str, multi_label):
     def compute_acc_metrics(p):
-        preds = p.predictions.argmax(-1)
-        labels = p.label_ids
-        acc = accuracy_score(labels, preds)
+        if multi_label:
+            # 多标签：sigmoid + 阈值
+            probs = 1 / (1 + np.exp(-p.predictions))
+            preds = (probs >= 0.5).astype(int)
+            labels = p.label_ids
+            # 多标签 accuracy 一般用 subset accuracy
+            acc = accuracy_score(labels, preds)
+        else:
+            # 多类别：argmax
+            preds = p.predictions.argmax(-1)
+            labels = p.label_ids
+            acc = accuracy_score(labels, preds)
         return {"eval_acc": acc}
     
     def compute_mcc_metrics(p):
@@ -229,7 +238,7 @@ def main():
 
     train_dataset, eval_dataset = get_datasets(args, dna_rna_tokenizer, protein_tokenizer)
 
-    compute_metrics = get_compute_metrics_fn(args.eval_metrics)
+    compute_metrics = get_compute_metrics_fn(args.eval_metrics, args.multi_label)
 
     trainer = Trainer(
         model=model,
