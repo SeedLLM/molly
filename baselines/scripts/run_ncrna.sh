@@ -1,15 +1,15 @@
 python baselines/train.py \
-  --model_type ESM \
-  --task_name functionec \
-  --eval_metrics fmax \
-  --num_labels 538 \
-  --train-dataset-path /share/appspace_data/shared_groups/yzwl_chenzh_ChenZihong_Share/omics_data/CotExp/woCOT/FunctionEC/train_FunctionEC_task.parquet \
-  --eval-dataset-path /share/appspace_data/shared_groups/yzwl_chenzh_ChenZihong_Share/omics_data/CotExp/woCOT/FunctionEC/val_FunctionEC_task.parquet \
+  --model_type NT \
+  --task_name ncrna \
+  --eval_metrics acc \
+  --num_labels 13 \
+  --train-dataset-path /share/appspace_data/shared_groups/yzwl_chenzh_ChenZihong_Share/omics_data/CotExp/woCOT/NcRNA/train_NcRNA_task.parquet  \
+  --eval-dataset-path /share/appspace_data/shared_groups/yzwl_chenzh_ChenZihong_Share/omics_data/CotExp/woCOT/NcRNA/val_NcRNA_task.parquet \
   --dna-rna-model-path /share/appspace_data/shared_groups/yzwl_chenzh_ChenZihong_Share/base_llm/nucleotide-transformer/  \
   --dna-rna-k-tokens 1024 \
   --protein-model-path /share/appspace_data/shared_groups/yzwl_chenzh_ChenZihong_Share/base_llm/esm2_t33_650M_UR50D/ \
   --protein-k-tokens 1024 \
-  --output_dir ./ckpt_hf/functionec \
+  --output_dir ./ckpt_hf/ncrna \
   --num_train_epochs 5 \
   --per_device_train_batch_size 8 \
   --per_device_eval_batch_size 8 \
@@ -21,8 +21,7 @@ python baselines/train.py \
   --save_strategy epoch \
   --dataloader_num_workers 8 \
   --load_best_model_at_end \
-  --metric_for_best_model eval_fmax \
+  --metric_for_best_model eval_auc \
   --report_to none \
-  --label2id_path baselines/data/ec_labels.json \
+  --label2id_path baselines/data/ncrna_labels.json \
   --multi_label \
-  --multi_answer \

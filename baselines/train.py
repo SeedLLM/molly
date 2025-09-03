@@ -61,6 +61,10 @@ class BackboneTrainConfig(TrainingArguments):
         default=False,
         metadata={"help": "Whether it's a multi-label classification task"}
     )
+    multi_answer: bool = field(
+        default=False,
+        metadata={"help": "Whether it's a multi-answer classification task"}
+    )
 
 
 def get_tokenizer(args: BackboneTrainConfig):
@@ -85,7 +89,8 @@ def get_model(args: BackboneTrainConfig):
         nt_model=args.dna_rna_model_path,
         esm_model=args.protein_model_path,
         num_labels=args.num_labels,
-        multi_label=args.multi_label
+        multi_label=args.multi_label,
+        multi_answer=args.multi_answer
     )
     return model
 
