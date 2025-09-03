@@ -2,6 +2,7 @@ python baselines/train.py \
   --model_type ESM+ESM \
   --task_name antibody \
   --eval_metrics mcc \
+  --num_labels 2 \
   --train-dataset-path /share/appspace_data/shared_groups/yzwl_chenzh_ChenZihong_Share/omics_data/CotExp/woCOT/Antibody/train_Antibody_task.parquet \
   --eval-dataset-path /share/appspace_data/shared_groups/yzwl_chenzh_ChenZihong_Share/omics_data/CotExp/woCOT/Antibody/val_Antibody_task.parquet \
   --dna-rna-model-path /share/appspace_data/shared_groups/yzwl_chenzh_ChenZihong_Share/base_llm/nucleotide-transformer/  \

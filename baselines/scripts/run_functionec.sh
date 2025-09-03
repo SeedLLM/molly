@@ -2,6 +2,7 @@ python baselines/train.py \
   --model_type ESM \
   --task_name functionec \
   --eval_metrics fmax \
+  --num_labels 538 \
   --train-dataset-path /share/appspace_data/shared_groups/yzwl_chenzh_ChenZihong_Share/omics_data/CotExp/woCOT/FunctionEC/train_FunctionEC_task.parquet \
   --eval-dataset-path /share/appspace_data/shared_groups/yzwl_chenzh_ChenZihong_Share/omics_data/CotExp/woCOT/FunctionEC/val_FunctionEC_task.parquet \
   --dna-rna-model-path /share/appspace_data/shared_groups/yzwl_chenzh_ChenZihong_Share/base_llm/nucleotide-transformer/  \
@@ -10,8 +11,8 @@ python baselines/train.py \
   --protein-k-tokens 1024 \
   --output_dir ./ckpt_hf/functionec \
   --num_train_epochs 5 \
-  --per_device_train_batch_size 4 \
-  --per_device_eval_batch_size 4 \
+  --per_device_train_batch_size 8 \
+  --per_device_eval_batch_size 8 \
   --learning_rate 1e-4 \
   --warmup_ratio 0.1 \
   --logging_steps 50 \
@@ -22,3 +23,5 @@ python baselines/train.py \
   --load_best_model_at_end \
   --metric_for_best_model eval_fmax \
   --report_to none \
+  --label2id_path baselines/data/ec_labels.json \
+  --multi_label \

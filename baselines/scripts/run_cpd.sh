@@ -2,6 +2,7 @@ python baselines/train.py \
   --model_type NT \
   --task_name cpd \
   --eval_metrics mcc \
+  --num_labels 2 \
   --train-dataset-path /share/appspace_data/shared_groups/yzwl_chenzh_ChenZihong_Share/omics_data/CotExp/woCOT/CPD/train_CPD_task.parquet \
   --eval-dataset-path /share/appspace_data/shared_groups/yzwl_chenzh_ChenZihong_Share/omics_data/CotExp/woCOT/CPD/val_CPD_task.parquet \
   --dna-rna-model-path /share/appspace_data/shared_groups/yzwl_chenzh_ChenZihong_Share/base_llm/nucleotide-transformer/  \

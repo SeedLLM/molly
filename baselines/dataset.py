@@ -15,6 +15,8 @@ class ClassificationDataset(Dataset):
                  model_type: str = "NT",
                  dna_rna_k_tokens: int = 1024,
                  protein_k_tokens: int = 1024,
+                 label2id: Dict[str, int] = None,
+                 multi_label: bool = False,
                  shuffle: bool = False):
         self.file_path = file_path
         self.dna_rna_tokenizer = dna_rna_tokenizer
@@ -22,6 +24,9 @@ class ClassificationDataset(Dataset):
         self.model_type = model_type
         self.dna_rna_k_tokens = dna_rna_k_tokens
         self.protein_k_tokens = protein_k_tokens
+
+        self.label2id = label2id
+        self.multi_label = multi_label
 
         self.data = pd.read_parquet(file_path)
         if shuffle:
@@ -65,7 +70,6 @@ class ClassificationDataset(Dataset):
         )
 
 
-    
     def __getitem__(self, idx: int) -> Dict:
         row = self.data.iloc[idx].to_dict()
         input_text = row.get("input",  "").strip()
@@ -75,12 +79,25 @@ class ClassificationDataset(Dataset):
         seqs = self._extract_seqs(input_text)
 
         # TODO: 确认能成功处理label
-        if isinstance(label, (int, float)):
-            label_tensor = torch.tensor(label, dtype=torch.long if isinstance(label, int) else torch.float)
-        elif label in ['positive', 'negative']:
-            label_tensor = torch.tensor(1 if label == 'positive' else 0, dtype=torch.long)
+        if self.multi_label:
+            if "EC" in label:
+                labels = label.replace("EC", "").split(",")
+            label_tensor = torch.zeros(len(self.label2id), dtype=torch.float)
+            for lab in labels:
+                lab = lab.strip()
+                if lab in self.label2id:
+                    idx = self.label2id[lab]
+                    label_tensor[idx] = 1.0
+            # 检查是否至少有一个标签被设置
+            if label_tensor.sum() == 0:
+                raise ValueError(f"None of the labels in {labels} are in label2id mapping.")
         else:
-            label_tensor = torch.tensor(float(label), dtype=torch.float)
+            if isinstance(label, (int, float)):
+                label_tensor = torch.tensor(label, dtype=torch.long if isinstance(label, int) else torch.float)
+            elif label in ['positive', 'negative']:
+                label_tensor = torch.tensor(1 if label == 'positive' else 0, dtype=torch.long)
+            else:
+                label_tensor = torch.tensor(float(label), dtype=torch.float)
 
         batch = {
             "labels": label_tensor

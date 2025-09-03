@@ -4,7 +4,6 @@ from transformers import AutoModelForMaskedLM
 import torch.nn.functional as F
 from transformers.modeling_outputs import SequenceClassifierOutput
 import copy
-import os
 
 
 class BackboneWithClsHead(nn.Module):
@@ -22,9 +21,11 @@ class BackboneWithClsHead(nn.Module):
                  nt_model: str = None,
                  esm_model: str = None,
                  num_labels: int = 2,
+                 multi_label: bool = False
                  ):
         super(BackboneWithClsHead, self).__init__()
         self.model_type = model_type
+        self.multi_label = multi_label
 
         if model_type == "NT":
             self.backbone = self._get_nt_model(nt_model)
@@ -82,10 +83,11 @@ class BackboneWithClsHead(nn.Module):
             }
             h = self._cls(self.backbone, x)
         elif self.model_type == "ESM":
-            # x = self.tok(batch['seq'], return_tensors='pt', padding=True, truncation=True)
-            # x = {k: v.to(self.backbone.device) for k, v in x.items()}
-            # h = self._cls(self.backbone, x)
-            pass
+            x = {
+                'input_ids': x1,
+                'attention_mask': mask1
+            }
+            h = self._cls(self.backbone, x)
         elif self.model_type == "NT+ESM":
             # x1 = self.tok_nt(batch['seq'], return_tensors='pt', padding=True, truncation=True)
             # x1 = {k: v.to(self.nt.device) for k, v in x1.items()}
@@ -128,7 +130,10 @@ class BackboneWithClsHead(nn.Module):
 
         loss = None
         if labels is not None:
-            loss = F.cross_entropy(logits, labels)
+            if self.multi_label:
+                loss = F.binary_cross_entropy_with_logits(logits, labels.float())
+            else:
+                loss = F.cross_entropy(logits, labels)
 
         return SequenceClassifierOutput(
             loss=loss,
