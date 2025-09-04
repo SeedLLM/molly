@@ -29,7 +29,6 @@ from utils import (
     get_current_device,
 )
 
-# 全局生效
 set_seed(42)
 
 

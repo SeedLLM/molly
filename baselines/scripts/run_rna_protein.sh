@@ -1,0 +1,25 @@
+python baselines/train.py \
+  --model_type NT+ESM \
+  --task_name rna_protein \
+  --eval_metrics mcc \
+  --num_labels 13 \
+  --train-dataset-path /share/appspace_data/shared_groups/yzwl_chenzh_ChenZihong_Share/omics_data/CotExp/woCOT/RNA-Protien/train_RNA-Protien_task.parquet \
+  --eval-dataset-path /share/appspace_data/shared_groups/yzwl_chenzh_ChenZihong_Share/omics_data/CotExp/woCOT/RNA-Protien/val_RNA-Protien_task.parquet \
+  --dna-rna-model-path /share/appspace_data/shared_groups/yzwl_chenzh_ChenZihong_Share/base_llm/nucleotide-transformer/  \
+  --dna-rna-k-tokens 1024 \
+  --protein-model-path /share/appspace_data/shared_groups/yzwl_chenzh_ChenZihong_Share/base_llm/esm2_t33_650M_UR50D/ \
+  --protein-k-tokens 1024 \
+  --output_dir ./ckpt_hf/rna_protein \
+  --num_train_epochs 5 \
+  --per_device_train_batch_size 4 \
+  --per_device_eval_batch_size 4 \
+  --learning_rate 1e-4 \
+  --warmup_ratio 0.1 \
+  --logging_steps 50 \
+  --do_eval \
+  --eval_strategy epoch \
+  --save_strategy epoch \
+  --dataloader_num_workers 8 \
+  --load_best_model_at_end \
+  --metric_for_best_model eval_mcc \
+  --report_to none \

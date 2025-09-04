@@ -16,3 +16,4 @@ swanlab/
 data_tools/sample/
 trainer_output/
 src/UNKNOWN.egg-info/
+ckpt_hf/
