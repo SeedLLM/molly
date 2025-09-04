@@ -148,7 +148,7 @@ if __name__ == "__main__":
     # # 2. 统计每个任务在所有文件中的数据量
     # task_counts = count_task_in_jsonl(input_files, task_names)
     # print(f"Task counts: {task_counts}")
-    input_files = ["/tos-bjml-ai4agr/lijinzhe/dataset/BioMLLM/TargetTask0808/train_10_task.parquet"]
+    input_files = ["/share/org/YZWL/yzwl_lijz/dataset_res/omics_data/TargetTask0808/train_10_task.parquet"]
     # task_names = ["Solubility-Solubility"]
     # DNA
     # task_names = ["tf-m", "pd-prom_300", "cpd-prom_core", "promoter_enhancer"]
@@ -161,6 +161,9 @@ if __name__ == "__main__":
     # DNA_Protein
     # task_names = ["tf-m", "pd-prom_300", "cpd-prom_core", "promoter_enhancer", "FunctionEC-FunctionEC", "Solubility-Solubility", "antibody_antigen"]
     # RNA_Protein
-    task_names = ["NoncodingRNAFamily-NoncodingRNAFamily", "Modification-Modification", "FunctionEC-FunctionEC", "Solubility-Solubility", "antibody_antigen", "rna_protein_interaction"]
-    output_file = "/tos-bjml-ai4agr/lijinzhe/dataset/BioMLLM/Ablation/RNA_Protein/train_rna_protein_task.parquet"
+    # task_names = ["NoncodingRNAFamily-NoncodingRNAFamily", "Modification-Modification", "FunctionEC-FunctionEC", "Solubility-Solubility", "antibody_antigen", "rna_protein_interaction"]
+    task_names = ["rna_protein_interaction"]
+    output_file = "/share/org/YZWL/yzwl_lijz/dataset_res/omics_data/CotExp/woCOT/RNA-Protien/train_RNA-Protien_task.parquet"
     filter_parquet_by_task(input_files, task_names, output_file)
+
+    # source /share/apps/anaconda3/bin/activate

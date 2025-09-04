@@ -9,7 +9,10 @@ import os
 import time
 from contextlib import contextmanager
 from transformers.utils import is_torch_cuda_available
+import torch.distributed as dist
 
+def is_main_process():
+    return not dist.is_initialized() or dist.get_rank() == 0
 
 def print_rank_0(*args, **kwargs):
     """

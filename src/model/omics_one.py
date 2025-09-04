@@ -220,7 +220,7 @@ class OmicsOne(nn.Module):
         output_ids = self.model.generate(
             inputs_embeds=hidden_states,
             attention_mask=attention_mask,
-            max_new_tokens=1024,
+            max_new_tokens=3072,
             do_sample=do_sample,
             temperature=temperature,
             top_p=top_p,
