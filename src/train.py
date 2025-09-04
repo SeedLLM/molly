@@ -11,6 +11,7 @@ from transformers import (
     AutoModelForMaskedLM,
     AutoTokenizer,
     set_seed,
+    TrainingArguments
 )
 
 # pylint: disable=no-name-in-module
@@ -28,7 +29,6 @@ from utils import (
     get_current_device,
 )
 
-# 全局生效
 set_seed(42)
 
 
@@ -149,6 +149,8 @@ def setup_dataloaders(args, tokenizer, dna_rna_tokenizer, protein_tokenizer):
 
     print_rank_0(f"Rank: {dp_rank}, World Size: {num_dp_ranks}")
 
+    training_args = TrainingArguments()
+
     # 创建数据集配置
     train_config = DatasetConfig(
         max_len=args.max_len,
@@ -163,18 +165,20 @@ def setup_dataloaders(args, tokenizer, dna_rna_tokenizer, protein_tokenizer):
 
     # 创建训练数据集
     print_rank_0(f"Loading training dataset from {args.train_dataset_path}")
-    train_dataset = OmicsDataset(
-        parquet_file=args.train_dataset_path,
-        tokenizer=tokenizer,
-        dataset_config=train_config,
-        dna_rna_tokenizer=dna_rna_tokenizer,
-        protein_tokenizer=protein_tokenizer,
-        read_nums=args.read_nums,
-        shuffle=True,
-        seed=42,
-        type="Train",
-        num_workers=args.dataloader_num_workers,
-    )
+
+    with training_args.main_process_first(desc='load train dataset', local=True):
+        train_dataset = OmicsDataset(
+            parquet_file=args.train_dataset_path,
+            tokenizer=tokenizer,
+            dataset_config=train_config,
+            dna_rna_tokenizer=dna_rna_tokenizer,
+            protein_tokenizer=protein_tokenizer,
+            read_nums=args.read_nums,
+            shuffle=True,
+            seed=42,
+            type="Train",
+            cache_file='.cache/train.pt',
+        )
 
     # 创建评估数据集（如果需要）
     eval_dataset = None
@@ -192,18 +196,19 @@ def setup_dataloaders(args, tokenizer, dna_rna_tokenizer, protein_tokenizer):
             output_field="output",
         )
 
-        eval_dataset = OmicsDataset(
-            parquet_file=args.eval_dataset_path,
-            tokenizer=tokenizer,
-            dataset_config=eval_config,
-            dna_rna_tokenizer=dna_rna_tokenizer,
-            protein_tokenizer=protein_tokenizer,
-            read_nums=args.eval_read_nums,
-            shuffle=False,
-            seed=42,
-            type="Eval",
-            num_workers=args.dataloader_num_workers,
-        )
+        with training_args.main_process_first(desc='load eval dataset', local=True):
+            eval_dataset = OmicsDataset(
+                parquet_file=args.eval_dataset_path,
+                tokenizer=tokenizer,
+                dataset_config=eval_config,
+                dna_rna_tokenizer=dna_rna_tokenizer,
+                protein_tokenizer=protein_tokenizer,
+                read_nums=args.eval_read_nums,
+                shuffle=False,
+                seed=42,
+                type="Eval",
+                cache_file='.cache/eval.pt',
+            )
 
     return train_dataset, eval_dataset
 
@@ -357,12 +362,6 @@ def main():
         type=int,
         default=None,
         help="Number of evaluation samples to read",
-    )
-    parser.add_argument(
-        "--dataloader_num_workers",
-        type=int,
-        default=0,
-        help="Number of workers for data loading",
     )
 
     # Dataset compatibility parameters

@@ -8,7 +8,10 @@ import numpy as np
 import pandas as pd
 import torch
 from torch.utils.data import Dataset
-from tqdm.contrib.concurrent import process_map
+from tqdm import tqdm
+
+from concurrent.futures import ThreadPoolExecutor
+from utils.tools import is_main_process
 
 
 @dataclass
@@ -32,14 +35,14 @@ class OmicsDataset(Dataset):
         self,
         parquet_file: str,
         tokenizer,
-        dataset_config,
+        dataset_config:"DatasetConfig",
         dna_rna_tokenizer=None,
         protein_tokenizer=None,
         read_nums=None,
         shuffle=False,
         seed=42,
-        num_workers=0,
         type=None,
+        cache_file:str = '.cache/data.pt',
         **kwargs,
     ):
         """
@@ -53,7 +56,6 @@ class OmicsDataset(Dataset):
             read_nums: Maximum number of samples to read.
             shuffle: Whether to shuffle the dataset.
             seed: Random seed for shuffling.
-            num_workers: Number of workers for data loading.
             type: Dataset type. "Train / Eval" or "Test"
             **kwargs: Additional arguments.
         """
@@ -67,7 +69,6 @@ class OmicsDataset(Dataset):
         self.dataset_config = dataset_config
         self.shuffle = shuffle
         self.seed = seed
-        self.num_workers = num_workers
 
         # Configuration parameters
         self.max_len = dataset_config.max_len
@@ -90,6 +91,12 @@ class OmicsDataset(Dataset):
         self.assistant_start_ids = self.tokenizer.encode(
             "<|im_end|>\n<|im_start|>assistant\n", add_special_tokens=False)
 
+        # Load cache first
+        if not is_main_process() and os.path.exists(cache_file):
+            print(f'Load cache data from {cache_file}')
+            self.data = torch.load(cache_file)
+            return
+
         # Load data
         print(f"Loading parquet data from {parquet_file}")
         df = pd.read_parquet(parquet_file)
@@ -103,18 +110,19 @@ class OmicsDataset(Dataset):
             rng = np.random.default_rng(self.seed)
             df = df.sample(frac=1, random_state=rng).reset_index(drop=True)
 
-        print(
-            f"Preprocessing {len(df)} samples with {num_workers} workers ...")
-
-        self.data = process_map(
-            partial(self._preprocess_sample, tokenizer=self.tokenizer),
-            df.to_dict("records"),
-            max_workers=num_workers,
-            chunksize=max(1,
-                          len(df) // (num_workers * 4)),
-            desc="Preprocessing",
+        records = df.to_dict("records")
+        self.data = list(
+            tqdm(
+                map(partial(self._preprocess_sample, tokenizer=self.tokenizer), records),
+                total=len(records),
+                desc="Preprocessing",
+            )
         )
 
+        if is_main_process():
+            print(f'Dump cache data to {cache_file}')
+            os.makedirs(os.path.dirname(cache_file), exist_ok=True)
+            torch.save(self.data, cache_file)
         print(f"Loaded {len(self.data)} samples from parquet file")
 
     def __len__(self) -> int:

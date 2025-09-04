@@ -9,7 +9,10 @@ import os
 import time
 from contextlib import contextmanager
 from transformers.utils import is_torch_cuda_available
+import torch.distributed as dist
 
+def is_main_process():
+    return not dist.is_initialized() or dist.get_rank() == 0
 
 def print_rank_0(*args, **kwargs):
     """
@@ -102,12 +105,15 @@ def init_swanlab_rank_0(args, experiment_suffix=""):
             )
 
             # 登录
-            swanlab.login()
-            print_rank_0("SwanLab login successful")
+            print(args.swanlab_mode, "show show show")
+            if args.swanlab_mode == "cloud":
+                swanlab.login(api_key="", save=True)
+                print_rank_0("SwanLab login successful")
 
             # 初始化
             swanlab.init(
                 project=args.swanlab_project,
+                mode=args.swanlab_mode,
                 experiment_name=args.experiment_name + experiment_suffix,
                 config=vars(args),
             )
