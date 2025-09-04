@@ -37,7 +37,7 @@ class BackboneWithClsHead(nn.Module):
             dim = self.backbone.config.hidden_size
         elif model_type == "NT+ESM":
             self.nt = self._get_nt_model(nt_model)
-            self.esm, self.tok_esm = self._get_esm_model_and_token
+            self.esm = self._get_esm_model(esm_model)
             dim = self.nt.config.hidden_size + self.esm.config.hidden_size
         elif model_type == "NT+NT":
             self.nt1 = self._get_nt_model(nt_model)
@@ -91,16 +91,17 @@ class BackboneWithClsHead(nn.Module):
             }
             h = self._cls(self.backbone, x)
         elif self.model_type == "NT+ESM":
-            # x1 = self.tok_nt(batch['seq'], return_tensors='pt', padding=True, truncation=True)
-            # x1 = {k: v.to(self.nt.device) for k, v in x1.items()}
-            # h1 = self._cls(self.nt, x1)
-
-            # x2 = self.tok_esm(batch['seq'], return_tensors='pt', padding=True, truncation=True)
-            # x2 = {k: v.to(self.esm.device) for k, v in x2.items()}
-            # h2 = self._cls(self.esm, x2)
-
-            # h = torch.cat([h1, h2], dim=-1)
-            pass
+            x1 = {
+                'input_ids': x1,
+                'attention_mask': mask1
+            }
+            x2 = {
+                'input_ids': x2,
+                'attention_mask': mask2
+            }
+            h1 = self._cls(self.nt, x1)
+            h2 = self._cls(self.esm, x2)
+            h = torch.cat([h1, h2], dim=-1)
         elif self.model_type == "NT+NT":
             x1 = {
                 'input_ids': x1,
