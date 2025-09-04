@@ -78,8 +78,6 @@ class ClassificationDataset(Dataset):
         # 解析序列
         seqs = self._extract_seqs(input_text)
 
-        # print(label)
-        # TODO: 确认能成功处理label
         if self.multi_label:
             if "EC" in label:
                 label = label.replace("EC", "")
