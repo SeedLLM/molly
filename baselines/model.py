@@ -47,6 +47,9 @@ class BackboneWithClsHead(nn.Module):
             self.esm1 = self._get_esm_model(esm_model)
             self.esm2 = copy.deepcopy(self._get_esm_model(esm_model))
             dim = 2 * self.esm1.config.hidden_size
+        elif model_type == "EVO":
+            self.backbone = self._get_evo_model(nt_model)
+            dim = 2560
         else:
             raise ValueError(f"Invalid model_type: {model_type}")
         
@@ -71,10 +74,31 @@ class BackboneWithClsHead(nn.Module):
         return nt_model
 
 
+    def _get_evo_model(self, model_name_or_path):
+        from evo2 import Evo2
+        evo2_model = Evo2(model_name_or_path)
+        return evo2_model
+
+
     def _cls(self, model, x):
-        out = model(**x, output_hidden_states=True)
-        last_hidden_state = out.hidden_states[-1]
-        return last_hidden_state[:, 0]
+        if self.model_type == "EVO":
+            input_ids = x['input_ids']
+            # 动态计算最后一层索引
+            total_blocks = len(model.model.blocks)
+            target_idx = total_blocks - 2 
+            layer_names = [f'blocks.{target_idx}.mlp.l3']
+
+            outputs, embeddings = model(
+                input_ids,
+                return_embeddings=True,
+                layer_names=layer_names
+            )
+            h = embeddings[layer_names[0]].mean(dim=1)
+            return h
+        else:
+            out = model(**x, output_hidden_states=True)
+            last_hidden_state = out.hidden_states[-1]
+            return last_hidden_state[:, 0]       # [CLS] token
 
 
     def forward(self, x1, x2=None, mask1=None, mask2=None, labels=None):
@@ -126,6 +150,11 @@ class BackboneWithClsHead(nn.Module):
             h1 = self._cls(self.esm1, x1)
             h2 = self._cls(self.esm2, x2)
             h = torch.cat([h1, h2], dim=-1)
+        elif self.model_type == "EVO":
+            x = {
+                'input_ids': x1
+            }
+            h = self._cls(self.backbone, x)
         else:
             raise ValueError(f"Invalid model_type: {self.model_type}")
         

@@ -71,6 +71,11 @@ def get_tokenizer(args: BackboneTrainConfig):
     if args.model_type in ["NT", "NT+ESM", "NT+NT"]:
         assert args.dna_rna_model_path is not None, "dna_rna_model_path is required for NT models"
         dna_rna_tokenizer = AutoTokenizer.from_pretrained(args.dna_rna_model_path, use_fast=True)
+    elif args.model_type in ["EVO"]:
+        assert args.dna_rna_model_path is not None, "dna_rna_model_path is required for EVO models"
+        from evo2 import Evo2
+        evo2_model = Evo2(args.dna_rna_model_path)
+        dna_rna_tokenizer = evo2_model.tokenizer
     else:
         dna_rna_tokenizer = None
 

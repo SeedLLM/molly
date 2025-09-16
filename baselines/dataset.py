@@ -60,14 +60,26 @@ class ClassificationDataset(Dataset):
         return seqs
 
     
-    def _tokenize_single(self, seq: str, tokenizer: AutoTokenizer, max_len: int) -> Dict:
-        return tokenizer(
-            seq,
-            padding="max_length",
-            truncation=True,
-            max_length=max_len,
-            return_tensors="pt"
-        )
+    def _tokenize_single(self, seq: str, tokenizer, max_len: int) -> Dict:
+        if self.model_type == "EVO":
+            if not hasattr(tokenizer, "pad_token_id"):
+                tokenizer.pad_token_id = 1
+            ids = tokenizer.tokenize(seq)
+            if len(ids) > max_len:
+                ids = ids[:max_len]
+            ids = ids + [tokenizer.pad_token_id] * (max_len - len(ids))
+            input_ids = torch.tensor(ids, dtype=torch.long)
+            mask = (input_ids != tokenizer.pad_token_id).long()
+            return {"input_ids": input_ids, "attention_mask": mask}
+        else:
+            # 正常的 HF tokenizer
+            return tokenizer(
+                seq,
+                padding="max_length",
+                truncation=True,
+                max_length=max_len,
+                return_tensors="pt"
+            )
 
 
     def __getitem__(self, idx: int) -> Dict:
@@ -164,6 +176,16 @@ class ClassificationDataset(Dataset):
                 "mask1": tokenized_1["attention_mask"].squeeze(0),
                 "x2": tokenized_2["input_ids"].squeeze(0),
                 "mask2": tokenized_2["attention_mask"].squeeze(0)
+            })
+        elif self.model_type == "EVO":
+            assert self.dna_rna_tokenizer is not None, "dna_rna_tokenizer is required for EVO model"
+            assert len(seqs["dna"]) + len(seqs["rna"]) == 1, "EVO model requires exactly one DNA or RNA sequence"
+            seq = seqs["dna"][0] if len(seqs["dna"]) == 1 else seqs["rna"][0]
+            tokenized = self._tokenize_single(seq, self.dna_rna_tokenizer, self.dna_rna_k_tokens)
+
+            batch.update({
+                "x1": tokenized["input_ids"].squeeze(0),
+                "mask1": tokenized["attention_mask"].squeeze(0)
             })
         else:
             raise ValueError(f"Unsupported model_type: {self.model_type}")
