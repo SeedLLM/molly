@@ -1,10 +1,10 @@
 import torch
+import numpy as np
 from dataclasses import dataclass, field
 from transformers import TrainingArguments, HfArgumentParser, set_seed, AutoTokenizer, Trainer, AutoModelForMaskedLM
 from dataset import ClassificationDataset, ClassificationCollator
 from model import BackboneWithClsHead
 from sklearn.metrics import accuracy_score, matthews_corrcoef, roc_auc_score
-import numpy as np
 import json
 
 set_seed(42)
@@ -97,6 +97,11 @@ def get_model(args: BackboneTrainConfig):
         multi_label=args.multi_label,
         multi_answer=args.multi_answer
     )
+    print(model)
+    model.freeze_backbone()
+    print("After freezing backbone:")
+    for n, p in model.named_parameters():
+        print(n, p.requires_grad)
     return model
 
 
@@ -229,6 +234,21 @@ def get_compute_metrics_fn(eval_name: str, multi_label):
         raise ValueError(f"Invalid eval_name: {eval_name}")
     
 
+from transformers import TrainerCallback
+import torch.nn as nn
+
+class HeadUpdateCallback(TrainerCallback):
+    def __init__(self, model: nn.Module):
+        # 保存初始参数（深拷贝）
+        self.init_w = model.head.weight.clone().detach()
+        self.init_b = model.head.bias.clone().detach()
+
+    def on_log(self, args, state, control, model=None, **kwargs):
+        # 用绝对路径取 head，避开包装层
+        head = model.module.head if hasattr(model, "module") else model.head
+        dw = (head.weight - self.init_w).norm().item()
+        db = (head.bias   - self.init_b).norm().item()
+        print(f"[step {state.global_step}] weight Δ={dw:.6f}  bias Δ={db:.6f}")
 
 def main():
     parser = HfArgumentParser(BackboneTrainConfig)
@@ -253,6 +273,7 @@ def main():
         data_collator=ClassificationCollator(),
         compute_metrics=compute_metrics
     )
+    trainer.add_callback(HeadUpdateCallback(model))
 
     trainer.train()
 

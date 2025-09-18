@@ -1,20 +1,20 @@
 python baselines/train.py \
-  --model_type NT \
+  --model_type EVO \
   --task_name pd \
   --eval_metrics mcc \
   --num_labels 2 \
-  --train-dataset-path /share/appspace_data/shared_groups/yzwl_chenzh_ChenZihong_Share/omics_data/CotExp/woCOT/PD/train_PD_task.parquet \
-  --eval-dataset-path /share/appspace_data/shared_groups/yzwl_chenzh_ChenZihong_Share/omics_data/CotExp/woCOT/PD/val_PD_task.parquet \
-  --dna-rna-model-path /share/appspace_data/shared_groups/yzwl_chenzh_ChenZihong_Share/base_llm/nucleotide-transformer/  \
+  --train-dataset-path /home/data/chenzihong/code/BioMLLM_V2/tmp/train_PD_task.parquet \
+  --eval-dataset-path /home/data/chenzihong/code/BioMLLM_V2/tmp/test_PD_task.parquet \
+  --dna-rna-model-path evo2_1b_base  \
   --dna-rna-k-tokens 1024 \
   --protein-model-path /share/appspace_data/shared_groups/yzwl_chenzh_ChenZihong_Share/base_llm/esm2_t33_650M_UR50D/ \
   --protein-k-tokens 1024 \
   --output_dir ./ckpt_hf/pd \
   --num_train_epochs 5 \
-  --per_device_train_batch_size 8 \
-  --per_device_eval_batch_size 8 \
-  --learning_rate 1e-4 \
-  --warmup_ratio 0.1 \
+  --per_device_train_batch_size 64 \
+  --per_device_eval_batch_size 32 \
+  --learning_rate 2e-5 \
+  --warmup_ratio 0 \
   --logging_steps 50 \
   --do_eval \
   --eval_strategy epoch \

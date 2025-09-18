@@ -29,6 +29,7 @@ class ClassificationDataset(Dataset):
         self.multi_label = multi_label
 
         self.data = pd.read_parquet(file_path)
+
         if shuffle:
             self.data = self.data.sample(frac=1).reset_index(drop=True)
 

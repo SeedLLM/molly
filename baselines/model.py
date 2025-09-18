@@ -1,10 +1,34 @@
 import torch
+import numpy as np
 import torch.nn as nn
 from transformers import AutoModelForMaskedLM
 import torch.nn.functional as F
 from transformers.modeling_outputs import SequenceClassifierOutput
 import copy
 
+
+class EvoWrapper(nn.Module):
+    def __init__(self, model_name_or_path):
+        super().__init__()
+        from evo2 import Evo2
+        self.evo = Evo2(model_name_or_path)
+        
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.evo.model.to(device)
+
+        self.blocks = self.evo.model.blocks
+
+    def forward(self, *args, **kwargs):
+        return self.evo(*args, **kwargs)
+
+    @property
+    def config(self):
+        class C:
+            hidden_size = 1920
+        return C()
+
+    def last_layer_name(self):
+        return f"blocks.23.mlp.l3"
 
 class BackboneWithClsHead(nn.Module):
     """
@@ -49,7 +73,7 @@ class BackboneWithClsHead(nn.Module):
             dim = 2 * self.esm1.config.hidden_size
         elif model_type == "EVO":
             self.backbone = self._get_evo_model(nt_model)
-            dim = 2560
+            dim = 1920
         else:
             raise ValueError(f"Invalid model_type: {model_type}")
         
@@ -73,27 +97,22 @@ class BackboneWithClsHead(nn.Module):
         )
         return nt_model
 
-
     def _get_evo_model(self, model_name_or_path):
-        from evo2 import Evo2
-        evo2_model = Evo2(model_name_or_path)
-        return evo2_model
+        return EvoWrapper(model_name_or_path)
 
 
     def _cls(self, model, x):
         if self.model_type == "EVO":
             input_ids = x['input_ids']
-            # 动态计算最后一层索引
-            total_blocks = len(model.model.blocks)
-            target_idx = total_blocks - 2 
-            layer_names = [f'blocks.{target_idx}.mlp.l3']
-
+            layer_name = model.last_layer_name()
             outputs, embeddings = model(
                 input_ids,
                 return_embeddings=True,
-                layer_names=layer_names
+                layer_names=[layer_name]
             )
-            h = embeddings[layer_names[0]].mean(dim=1)
+            h = embeddings[layer_name]
+            mask = x['attention_mask'].unsqueeze(-1)
+            h = (h * mask).sum(dim=1) / mask.sum(dim=1)
             return h
         else:
             out = model(**x, output_hidden_states=True)
@@ -152,19 +171,29 @@ class BackboneWithClsHead(nn.Module):
             h = torch.cat([h1, h2], dim=-1)
         elif self.model_type == "EVO":
             x = {
-                'input_ids': x1
+                'input_ids': x1,
+                'attention_mask': mask1
             }
             h = self._cls(self.backbone, x)
         else:
             raise ValueError(f"Invalid model_type: {self.model_type}")
         
-        logits = self.head(h)
+        # logits = self.head(h)
+        # print(f"h shape: {h.shape}")
+        # print(h)
+        # print(self.head.weight.dtype)
+        logits = self.head(h.to(self.head.weight.dtype))
+
+        # print(f"labels shape: {labels.shape}")
+        # print(labels)
 
         loss = None
         if labels is not None:
             if self.multi_answer:
                 loss = F.binary_cross_entropy_with_logits(logits, labels.float())
             else:
+                # print("logits", logits)
+                # print("labels", labels)
                 loss = F.cross_entropy(logits, labels)
 
         return SequenceClassifierOutput(
@@ -172,6 +201,6 @@ class BackboneWithClsHead(nn.Module):
             logits=logits
         )    
 
-    def freze_backbone(self):
+    def freeze_backbone(self):
         for param in self.backbone.parameters():
             param.requires_grad = False
