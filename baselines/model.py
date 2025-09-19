@@ -202,5 +202,14 @@ class BackboneWithClsHead(nn.Module):
         )    
 
     def freeze_backbone(self):
-        for param in self.backbone.parameters():
-            param.requires_grad = False
+        # for param in self.backbone.parameters():
+        #     param.requires_grad = False
+
+        for name in ["backbone", "nt", "nt1", "nt2", "esm", "esm1", "esm2"]:
+            if hasattr(self, name):
+                module = getattr(self, name)
+                print(module, "show module")
+                if module is not None:
+                    for p in module.parameters():
+                        p.requires_grad = False
+                    print(f"[freeze] {name} frozen")
