@@ -1,5 +1,7 @@
 # BioMLLM_V2
-基于初始版本的多组学大语言模型的修改版本，目标是优化代码，去除冗余
+多组学（DNA、RNA、蛋白）大语言模型。
+
+<img width="905" height="347" alt="Image" src="https://github.com/user-attachments/assets/200a556b-20dd-444f-a784-8029dea37f6c" />
 
 ## How to run
 
