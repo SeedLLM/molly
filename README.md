@@ -10,14 +10,21 @@ MOLLM 是一个集成了多个 encoder 的大语言模型，能够理解 DNA，R
 
 <img width="994" height="369" alt="Image" src="https://github.com/user-attachments/assets/65b17c06-0506-40a3-bd25-e59172630cff" />
 
-## :art: Download pretrained model
+## 🤗 Download trained model
 
+<div>
+  <tr>
+      <td><a href="https://huggingface.co/tpoisonooo/MOLLM-1.7B">MOLLM-1.7B</a></td>
+      <td><a href="https://huggingface.co/tpoisonooo/MOLLM-1.7B">MOLLM-4B</a></td>
+      <td><a href="https://huggingface.co/tpoisonooo/MOLLM-1.7B">MOLLM-8B</a></td>
+  </tr>
+</div>  
 
 ## :zap: How to inference
 
-```bash
-bash scripts/infer/inference_untrain.sh
-```
+    ```bash
+    ./scripts/infer/inference_untrain.sh
+    ```
 
 ## :fire: How to train
 
@@ -71,4 +78,5 @@ bash scripts/infer/inference_untrain.sh
     ```
 
 ## :pushpin: LICENSE
+
 This project follows [apache license](./LICENSE).
