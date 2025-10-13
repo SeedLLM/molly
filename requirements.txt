@@ -27,3 +27,4 @@ fastparquet
 packaging
 ninja
 swanlab[dashboard]
+liger-kernel
