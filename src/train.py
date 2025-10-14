@@ -553,8 +553,8 @@ def main():
     parser.add_argument("--attn_impl",
                         type=str,
                         default='flash_attention_2',
-                        choices=['sdpa', 'flash_attention_2'],
-                        help="FlashAttn Implementation, support none or fa2")
+                        choices=['sdpa', 'flash_attention_2', 'flash_attention_3'],
+                        help="FlashAttn Implementation, support sdpa, flash_attention_2 or flash_attention_3")
     
     parser.add_argument("--use_liger",
                         default=False,
