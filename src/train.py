@@ -99,6 +99,12 @@ def setup_model_and_optimizer(args, tokenizer):
             omics_one.dna_rna_model = dna_rna_model
 
         with time_count("Loaded llm model"):
+            if args.use_liger:
+                from liger_kernel.transformers import apply_liger_kernel_to_qwen3
+                apply_liger_kernel_to_qwen3()
+            else:
+                print('Liger Kernel disabled, see https://github.com/linkedin/Liger-Kernel for better performance')
+
             qwen_model = AutoModelForCausalLM.from_pretrained(
                 args.text_model_path,
                 torch_dtype="auto",
@@ -546,11 +552,15 @@ def main():
     # Training Optimization
     parser.add_argument("--attn_impl",
                         type=str,
-                        default='sdpa',
+                        default='flash_attention_2',
                         choices=['sdpa', 'flash_attention_2'],
                         help="FlashAttn Implementation, support none or fa2")
+    
+    parser.add_argument("--use_liger",
+                        default=False,
+                        help="Whether to use liger for optimizer state offload, see https://github.com/linkedin/Liger-Kernel")
 
-    parser.add_argument("dataloader_pin_memory", action="store_true")
+    parser.add_argument("--dataloader_pin_memory", action="store_true")
 
     # Add DeepSpeed arguments
     parser = deepspeed.add_config_arguments(parser)

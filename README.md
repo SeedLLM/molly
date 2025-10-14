@@ -10,6 +10,10 @@ MOLLM 是一个集成了多个 encoder 的大语言模型，能够理解 DNA，R
 
 <img width="994" height="369" alt="Image" src="https://github.com/user-attachments/assets/65b17c06-0506-40a3-bd25-e59172630cff" />
 
+## :star2: Feature
+- **Base Model**: Enhanced [Qwen3](https://github.com/QwenLM/Qwen3) with [nucleotide-transformer](https://github.com/instadeepai/nucleotide-transformer) and [ESM-2](https://github.com/facebookresearch/esm) encoders
+- **Optimization**: Support [Liger-Kernel](https://github.com/linkedin/Liger-Kernel) and [FlashAttention](https://github.com/Dao-AILab/flash-attention) for 100% training speedup, see [example script](./scripts/train/examples/run_train_1B_v3.sh)
+
 ## 🤗 Download trained model
 
 <div>
