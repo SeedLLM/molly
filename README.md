@@ -2,11 +2,11 @@
 <img width="400" height="240" alt="Image" src="https://github.com/user-attachments/assets/94b8192d-7f5b-49ed-b2fa-861c643b8b7a" />
 </div>
 
-## MOLLM
+## molly
 
-MOLLM is a Large Language Model composed of multiple encoders, capable of understanding multi-omics data (DNA, RNA, and protein).
+molly is a Large Language Model composed of multiple encoders, capable of understanding multi-omics data (DNA, RNA, and protein).
 
-MOLLM 是一个集成了多个 encoder 的大语言模型，能够理解 DNA，RNA 和 protein 序列信息。
+molly 是一个集成了多个 encoder 的大语言模型，能够理解 DNA，RNA 和 protein 序列信息。
 
 <img width="994" height="369" alt="Image" src="https://github.com/user-attachments/assets/65b17c06-0506-40a3-bd25-e59172630cff" />
 
@@ -18,9 +18,9 @@ MOLLM 是一个集成了多个 encoder 的大语言模型，能够理解 DNA，R
 
 <div>
   <tr>
-      <td><a href="https://huggingface.co/tpoisonooo/MOLLM-1.7B">MOLLM-1.7B</a></td>
-      <td><a href="https://huggingface.co/tpoisonooo/MOLLM-1.7B">MOLLM-4B</a></td>
-      <td><a href="https://huggingface.co/tpoisonooo/MOLLM-1.7B">MOLLM-8B</a></td>
+      <td><a href="https://huggingface.co/tpoisonooo/MOLLM-1.7B">molly-1.7B</a></td>
+      <td><a href="https://huggingface.co/tpoisonooo/MOLLM-1.7B">molly-4B</a></td>
+      <td><a href="https://huggingface.co/tpoisonooo/MOLLM-1.7B">molly-8B</a></td>
   </tr>
 </div>  
 

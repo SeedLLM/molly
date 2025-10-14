@@ -1,6 +1,6 @@
 enable_list="multimodal model.model.embed_tokens model.model.layers model.lm_head"
 experiment_name="Qwen3_1.7B_Omics_sft_1003_all_task_exp1"
-output_path="/mnt/shared-storage-user/ai4agr-share/lijinzhe/TastRes/BioMLLM/ResModel/${experiment_name}"
+output_path="${experiment_name}"
 
 options="--experiment-name $experiment_name \
 --output_dir $output_path \
