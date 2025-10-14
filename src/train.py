@@ -557,9 +557,7 @@ def main():
                         help="FlashAttn Implementation, support none or fa2")
     
     parser.add_argument("--use_liger",
-                        type=bool,
-                        default=True,
-                        action="store_false",
+                        default=False,
                         help="Whether to use liger for optimizer state offload, see https://github.com/linkedin/Liger-Kernel")
 
     parser.add_argument("--dataloader_pin_memory", action="store_true")

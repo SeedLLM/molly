@@ -105,7 +105,7 @@ def init_swanlab_rank_0(args, experiment_suffix=""):
             )
 
             # 登录
-            print(args.swanlab_mode, "show show show")
+            print(args.swanlab_mode, f"Swanlab model {args.swanlab_mode}")
             if args.swanlab_mode == "cloud":
                 swanlab.login(api_key="", save=True)
                 print_rank_0("SwanLab login successful")
