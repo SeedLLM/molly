@@ -2,12 +2,11 @@
 <img width="400" height="240" alt="Image" src="https://github.com/user-attachments/assets/94b8192d-7f5b-49ed-b2fa-861c643b8b7a" />
 </div>
 
-## molly
+## Molly
 
-molly is a Large Language Model composed of multiple encoders, capable of understanding multi-omics data (DNA, RNA, and protein).
+Molly is a Large Language Model composed of multiple encoders, capable of understanding multi-omics data (DNA, RNA, and protein).
 
-molly 是一个集成了多个 encoder 的大语言模型，能够理解 DNA，RNA 和 protein 序列信息。
-技术ben
+Molly 是一个集成了多个 encoder 的大语言模型，能够理解 DNA，RNA 和 protein 序列信息。
 <img width="994" height="369" alt="Image" src="https://github.com/user-attachments/assets/65b17c06-0506-40a3-bd25-e59172630cff" />
 Omics-Specific Models（OSMs）指代各自组学赛道中性能领先的专用模型；Enc-Head 则是“组学 Encoder + 分类头”的简洁架构，将预训练编码器与任务相关分类头直接连接。
 
