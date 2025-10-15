@@ -8,11 +8,12 @@ import numpy as np
 import pandas as pd
 import torch
 from torch.utils.data import Dataset
+import torch.distributed as dist
 from tqdm import tqdm
 
 from concurrent.futures import ThreadPoolExecutor
 from utils.tools import is_main_process
-
+from utils import time_count
 
 @dataclass
 class DatasetConfig:
@@ -92,9 +93,12 @@ class OmicsDataset(Dataset):
             "<|im_end|>\n<|im_start|>assistant\n", add_special_tokens=False)
 
         # Load cache first
-        if not is_main_process() and os.path.exists(cache_file):
-            print(f'Load cache data from {cache_file}')
-            self.data = torch.load(cache_file)
+        # if not is_main_process() and os.path.exists(cache_file):
+        print("Start load cache data")
+        if os.path.exists(cache_file):
+            rank = dist.get_rank()
+            with time_count(f"Rank {rank} load {cache_file}"):
+                self.data = torch.load(cache_file, map_location='cpu')
             return
 
         # Load data

@@ -3,6 +3,7 @@ import traceback
 from argparse import ArgumentParser
 from datetime import datetime
 
+import os
 import deepspeed
 import torch
 import torch.distributed as dist
@@ -85,8 +86,6 @@ def setup_model_and_optimizer(args, tokenizer):
             omics_one.protein_model = AutoModelForMaskedLM.from_config(
                 model_config.protein_config, trust_remote_code=True)
     else:
-        # import pdb
-        # pdb.set_trace()
         # https://github.com/huggingface/transformers/issues/38667
         with time_count("Loaded dna rna model"):
             print(current_device, "dna/rna")
@@ -216,6 +215,9 @@ def setup_dataloaders(args, tokenizer, dna_rna_tokenizer, protein_tokenizer):
                 cache_file='.cache/eval.pt',
             )
 
+    if dist.is_initialized():
+        dist.barrier()
+
     return train_dataset, eval_dataset
 
 
@@ -264,12 +266,6 @@ def main():
                         type=str,
                         default=None,
                         help="Profile log directory")
-    parser.add_argument(
-        "--global-rank",
-        default=-1,
-        type=int,
-        help="Global rank for distributed training",
-    )
 
     # Model
     parser.add_argument("--text-model-path",
@@ -566,6 +562,20 @@ def main():
     parser = deepspeed.add_config_arguments(parser)
     args = parser.parse_args()
 
+    # Bind device id and initialize distributed training
+    local_rank = int(os.environ["LOCAL_RANK"])
+    torch.cuda.set_device("cuda:{}".format(local_rank))
+
+    # 先让 PyTorch 带 device_id 初始化
+    dist.init_process_group(
+            backend="nccl",
+            device_id=torch.device(f"cuda:{local_rank}")   # 关键行
+    )
+
+    # 再让 DeepSpeed 只初始化它自己的 comm
+    deepspeed.init_distributed(dist_backend="nccl", init_method="env://",
+                            auto_mpi_discovery=False, verbose=False)
+
     # Calculate GPU count for DeepSpeed
     if dist.is_initialized():
         args.gpu_count = dist.get_world_size()
@@ -577,15 +587,13 @@ def main():
         args.clip_grad_max_norm = 1.0
     writer = None
     try:
-        # Initialize distributed training
-        deepspeed.init_distributed()
 
         # Set global_rank to current process rank
-        args.global_rank = dist.get_rank()
+        global_rank = dist.get_rank()    
 
         # Setup logging
         writer = None
-        if args.global_rank == 0:
+        if global_rank == 0:
             current_time = datetime.now().strftime("%y-%m-%d_%H-%M")
             if args.swanlab:
                 init_swanlab_rank_0(args, experiment_suffix=current_time)
@@ -600,6 +608,7 @@ def main():
         # Get dataloaders and convert to datasets for Transformers Trainer
         train_dataset, eval_dataset = setup_dataloaders(
             args, tokenizer, dna_rna_tokenizer, protein_tokenizer)
+        print('setup dataloader finished')
 
         # Apply parameter freezing or pre-train lora based on args.use-lora
         if args.use_lora:
@@ -610,7 +619,7 @@ def main():
             set_up_trainable_param(model, args)
 
         # 将所有参数打印出来以进行调试
-        if args.global_rank == 0:
+        if global_rank == 0:
             print_rank_0("-------- Training Configuration --------")
             print_rank_0(
                 f"Model: {args.text_model_path} + {args.dna_rna_model_path}")
@@ -644,7 +653,7 @@ def main():
 
     except Exception as e:
         traceback_info = traceback.format_exc()
-        if args.global_rank == 0:
+        if global_rank == 0:
             print_rank_0(traceback_info, logging.ERROR)
         else:
             print(traceback_info)
