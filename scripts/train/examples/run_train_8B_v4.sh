@@ -1,6 +1,7 @@
 enable_list="multimodal model.model.embed_tokens model.model.layers model.lm_head"
 experiment_name="Qwen3_8B_Omics_sft_1003_all_task_exp1"
 output_path="${experiment_name}"
+export NCCL_TIMEOUT=3600  # 单位秒，设为30分钟
 
 options="--experiment-name $experiment_name \
 --output_dir $output_path \
