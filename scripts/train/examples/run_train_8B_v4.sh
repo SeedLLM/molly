@@ -40,6 +40,10 @@ options="--experiment-name $experiment_name \
 --save_only_model \
 --attn_impl flash_attention_3 \
 --use_liger True \
+--swanlab \
+--swanlab-mode local \
+--swanlab-team BioMLLM_report \
+--swanlab-project BioMLLM \
 "
 # --load_best_model_at_end \
 # --save_safetensors \

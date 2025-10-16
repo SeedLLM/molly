@@ -184,7 +184,9 @@ def setup_dataloaders(args, tokenizer, dna_rna_tokenizer, protein_tokenizer):
             type="Train",
             cache_file='.cache/train.pt',
         )
-
+    if dist.is_initialized():
+        dist.barrier()
+    
     # 创建评估数据集（如果需要）
     eval_dataset = None
     if not args.skip_eval and args.eval_dataset_path:

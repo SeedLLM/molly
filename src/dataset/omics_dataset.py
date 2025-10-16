@@ -93,9 +93,9 @@ class OmicsDataset(Dataset):
             "<|im_end|>\n<|im_start|>assistant\n", add_special_tokens=False)
 
         # Load cache first
-        # if not is_main_process() and os.path.exists(cache_file):
         print("Start load cache data")
-        if os.path.exists(cache_file):
+        if not is_main_process() and os.path.exists(cache_file):
+        # if os.path.exists(cache_file):
             rank = dist.get_rank()
             with time_count(f"Rank {rank} load {cache_file}"):
                 self.data = torch.load(cache_file, map_location='cpu')
