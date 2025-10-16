@@ -19,8 +19,8 @@ Omics-Specific Models（OSMs）指代各自组学赛道中性能领先的专用�
 <div>
   <tr>
       <td><a href="https://huggingface.co/tpoisonooo/MOLLM-1.7B">molly-1.7B</a></td>
-      <td><a href="https://huggingface.co/tpoisonooo/MOLLM-1.7B">molly-4B</a></td>
-      <td><a href="https://huggingface.co/tpoisonooo/MOLLM-1.7B">molly-8B</a></td>
+      <td><a href="https://huggingface.co/tpoisonooo/MOLLM-4B">molly-4B</a></td>
+      <td><a href="https://huggingface.co/tpoisonooo/MOLLM-8B">molly-8B</a></td>
   </tr>
 </div>  
 
