@@ -1,7 +1,9 @@
 enable_list="multimodal model.model.embed_tokens model.model.layers model.lm_head"
 experiment_name="Qwen3_8B_Omics_sft_1003_all_task_exp1"
 output_path="${experiment_name}"
-export NCCL_TIMEOUT=3600  # 单位秒，设为30分钟
+
+# export TORCH_NCCL_ASYNC_ERROR_HANDLING=1
+# export NCCL_TIMEOUT=3600
 
 options="--experiment-name $experiment_name \
 --output_dir $output_path \
@@ -20,7 +22,7 @@ options="--experiment-name $experiment_name \
 --eval-max-src-len 3072 \
 --mode sft \
 --per_device_train_batch_size 1 \
---per_device_eval_batch_size 1 \
+--per_device_eval_batch_size 2 \
 --read-nums 1024000 \
 --eval-read-nums 1024 \
 --num_train_epochs 2 \
@@ -45,6 +47,7 @@ options="--experiment-name $experiment_name \
 --swanlab-mode local \
 --swanlab-team BioMLLM_report \
 --swanlab-project BioMLLM \
+--seed 42 \
 "
 # --load_best_model_at_end \
 # --save_safetensors \

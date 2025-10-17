@@ -43,7 +43,6 @@ class OmicsDataset(Dataset):
         shuffle=False,
         seed=42,
         type=None,
-        cache_file:str = '.cache/data.pt',
         **kwargs,
     ):
         """
@@ -93,13 +92,13 @@ class OmicsDataset(Dataset):
             "<|im_end|>\n<|im_start|>assistant\n", add_special_tokens=False)
 
         # Load cache first
-        print("Start load cache data")
-        # if not is_main_process() and os.path.exists(cache_file):
-        if os.path.exists(cache_file):
-            rank = dist.get_rank()
-            with time_count(f"Rank {rank} load {cache_file}"):
-                self.data = torch.load(cache_file, map_location='cpu', mmap=True)
-            return
+        # print("Start load cache data")
+        # # if not is_main_process() and os.path.exists(cache_file):
+        # if os.path.exists(cache_file):
+        #     rank = dist.get_rank()
+        #     with time_count(f"Rank {rank} load {cache_file}"):
+        #         self.data = torch.load(cache_file, map_location='cpu', mmap=True)
+        #     return
 
         # Load data
         print(f"Loading parquet data from {parquet_file}")
@@ -114,34 +113,36 @@ class OmicsDataset(Dataset):
             rng = np.random.default_rng(self.seed)
             df = df.sample(frac=1, random_state=rng).reset_index(drop=True)
 
-        records = df.to_dict("records")
-        self.data = list(
-            tqdm(
-                map(partial(self._preprocess_sample, tokenizer=self.tokenizer), records),
-                total=len(records),
-                desc="Preprocessing",
-            )
-        )
+        self.df = df
+        # records = df.to_dict("records")
 
-        if is_main_process():
-            print(f'Dump cache data to {cache_file}')
-            os.makedirs(os.path.dirname(cache_file), exist_ok=True)
-            torch.save(self.data, cache_file)
-        print(f"Loaded {len(self.data)} samples from parquet file")
+        # self.data = list(
+        #     tqdm(
+        #         map(partial(self._preprocess_sample, tokenizer=self.tokenizer), records),
+        #         total=len(records),
+        #         desc="Preprocessing",
+        #     )
+        # )
+
+        # if is_main_process():
+        #     print(f'Dump cache data to {cache_file}')
+        #     os.makedirs(os.path.dirname(cache_file), exist_ok=True)
+        #     torch.save(self.data, cache_file)
+        # print(f"Loaded {len(self.data)} samples from parquet file")
 
     def __len__(self) -> int:
         """Return the number of items in the dataset."""
-        return len(self.data)
+        return len(self.df)
 
     def __getitem__(self, idx: int) -> Dict[str, torch.Tensor]:
         """Return a specific item from the dataset."""
         # Ensure index is valid
-        if idx < 0 or idx >= len(self.data):
+        if idx < 0 or idx >= len(self.df):
             raise IndexError(
-                f"Index {idx} out of bounds for dataset with {len(self.data)} items"
+                f"Index {idx} out of bounds for dataset with {len(self.df)} items"
             )
 
-        sample = self.data[idx]
+        sample = self.format_raw(self.df.loc[idx], self.tokenizer)
         processed = self.process_sample(sample)
         assert len(processed["omic_ids"]) == len(
             processed["omic_info_list"]
@@ -192,7 +193,7 @@ class OmicsDataset(Dataset):
                 r"<protein>\s*([ACDEFGHIKLMNPQRSTVWYBXZOU]+)\s*<protein>"),
         }
 
-    def _preprocess_sample(self, sample: dict, tokenizer) -> dict:
+    def format_raw(self, sample: pandas.core.series.Series, tokenizer) -> dict:
         """
         Format a Parquet example into DNA-LLM format suitable for processing.
 
