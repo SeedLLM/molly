@@ -4,10 +4,9 @@ from typing import List, Optional, Tuple, Union
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from transformers import AutoModelForCausalLM, AutoModelForMaskedLM
+from transformers import AutoModelForCausalLM, AutoModelForMaskedLM, PreTrainedModel, PretrainedConfig
 from transformers.modeling_outputs import CausalLMOutputWithPast
 from utils.tools import time_count
-
 
 class OmicsOne(nn.Module):
 

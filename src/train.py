@@ -23,7 +23,6 @@ from transformers import (
 from dataset.omics_dataset import DatasetConfig, OmicsDataset, qwen_omics_collate_fn
 
 from torch.utils.data.distributed import DistributedSampler
-from deepspeed.utils.deepspeed_dist import get_rank, get_world_size
 from model import OmicsOne, get_omics_one_config
 from trainer import OmicsTrainer
 from utils import (
@@ -147,8 +146,8 @@ def setup_dataset(args, tokenizer, dna_rna_tokenizer, protein_tokenizer):
 
     # Get distributed training info
     if dist.is_initialized():
-        dp_rank = get_rank()
-        num_dp_ranks = get_world_size()
+        dp_rank = dist.get_rank()
+        num_dp_ranks = dist.get_world_size()
     else:
         dp_rank = 0
         num_dp_ranks = 1
@@ -584,7 +583,7 @@ def main():
                         help="Whether to use liger for optimizer state offload, see https://github.com/linkedin/Liger-Kernel")
 
     parser.add_argument("--dataloader_pin_memory", action="store_true")
-    parser.add_argument("--seed", default=42, help="The Answer to Life, the Universe, and Everything is 42.")
+    parser.add_argument("--seed", type=int, default=42, help="The Answer to Life, the Universe, and Everything is 42.")
 
     # Add DeepSpeed arguments
     parser = deepspeed.add_config_arguments(parser)
@@ -609,7 +608,7 @@ def main():
 
     # Calculate GPU count for DeepSpeed
     if dist.is_initialized():
-        args.gpu_count = get_world_size()
+        args.gpu_count = dist.get_world_size()
     else:
         args.gpu_count = 1
 
@@ -620,7 +619,7 @@ def main():
     try:
 
         # Set global_rank to current process rank
-        global_rank = get_rank()    
+        global_rank = dist.get_rank()    
 
         # Setup logging
         writer = None

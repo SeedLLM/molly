@@ -193,7 +193,7 @@ class OmicsDataset(Dataset):
                 r"<protein>\s*([ACDEFGHIKLMNPQRSTVWYBXZOU]+)\s*<protein>"),
         }
 
-    def format_raw(self, sample: pandas.core.series.Series, tokenizer) -> dict:
+    def format_raw(self, sample: pd.core.series.Series, tokenizer) -> dict:
         """
         Format a Parquet example into DNA-LLM format suitable for processing.
 

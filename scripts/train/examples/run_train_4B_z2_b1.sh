@@ -2,12 +2,17 @@ enable_list="multimodal model.model.embed_tokens model.model.layers model.lm_hea
 experiment_name="Qwen3_8B_Omics_sft_1003_all_task_exp1"
 output_path="${experiment_name}"
 
+export OMP_NUM_THREADS=8
+export MKL_NUM_THREADS=8
+
+export DEEPSPEED_GRAD_NORM_IS_NAN_INF_BYPASS=1
+
 # export TORCH_NCCL_ASYNC_ERROR_HANDLING=1
 # export NCCL_TIMEOUT=3600
 
 options="--experiment-name $experiment_name \
 --output_dir $output_path \
---text-model-path /mnt/shared-storage-user/ai4agr-share/lijinzhe/PreModel/Qwen3-8B \
+--text-model-path /mnt/shared-storage-user/ai4agr-share/lijinzhe/PreModel/Qwen3-4B \
 --dna-rna-model-path /mnt/shared-storage-user/ai4agr-share/lijinzhe/PreModel/nucleotide-transformer/  \
 --dna-rna-k-tokens 1024 \
 --protein-model-path /mnt/shared-storage-user/ai4agr-share/lijinzhe/PreModel/esm2_t33_650M_UR50D/ \
@@ -55,9 +60,11 @@ options="--experiment-name $experiment_name \
 # --use-lora
 # --load-pretrained \
 
-export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 deepspeed \
 --include localhost:0,1 \
 src/train.py \
 --deepspeed_config src/configs/ds_z2_config.json \
 $options
+
+
+# py-spy dump -p 60497 --locals | head -60
