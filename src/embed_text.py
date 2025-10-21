@@ -14,7 +14,7 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 from transformers import AutoModel, AutoModelForMaskedLM
 
-from train import setup_dataloaders, setup_tokenizers
+from train import setup_dataset, setup_tokenizers
 from utils import get_current_device
 
 import multiprocessing as mp
@@ -221,7 +221,7 @@ def main():
 
     # ---------- 1. tokenizer & dataset ----------
     tokenizer, dna_rna_tokenizer, protein_tokenizer = setup_tokenizers(args)
-    train_dataset, _ = setup_dataloaders(
+    train_dataset, _ = setup_dataset(
         args, tokenizer, dna_rna_tokenizer, protein_tokenizer
     )
 

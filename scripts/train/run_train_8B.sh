@@ -8,7 +8,6 @@ output_path="/share/org/YZWL/yzwl_lijz/dataset_res/res_model/${experiment_name}"
 # export NCCL_P2P_LEVEL=NVL 
 # export NCCL_LL_THRESHOLD=0
 
-
 options="--experiment-name $experiment_name \
 --output_dir $output_path \
 --text-model-path /share/org/YZWL/yzwl_lijz/base_llm/Qwen3-1B \

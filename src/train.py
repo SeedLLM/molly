@@ -3,8 +3,10 @@ import traceback
 from argparse import ArgumentParser
 from datetime import datetime
 
+import os
 import deepspeed
 import torch
+from torch.utils.data import DataLoader
 import torch.distributed as dist
 from transformers import (
     AutoModelForCausalLM,
@@ -14,10 +16,13 @@ from transformers import (
     TrainingArguments
 )
 
+
 # pylint: disable=no-name-in-module
 # pylint: disable=too-many-branches
 # pylint: disable=too-many-statements
 from dataset.omics_dataset import DatasetConfig, OmicsDataset, qwen_omics_collate_fn
+
+from torch.utils.data.distributed import DistributedSampler
 from model import OmicsOne, get_omics_one_config
 from trainer import OmicsTrainer
 from utils import (
@@ -28,9 +33,6 @@ from utils import (
     time_count,
     get_current_device,
 )
-
-set_seed(42)
-
 
 def setup_tokenizers(args):
     """
@@ -85,8 +87,6 @@ def setup_model_and_optimizer(args, tokenizer):
             omics_one.protein_model = AutoModelForMaskedLM.from_config(
                 model_config.protein_config, trust_remote_code=True)
     else:
-        # import pdb
-        # pdb.set_trace()
         # https://github.com/huggingface/transformers/issues/38667
         with time_count("Loaded dna rna model"):
             print(current_device, "dna/rna")
@@ -138,10 +138,9 @@ def setup_model_and_optimizer(args, tokenizer):
 
     return omics_one, model_config
 
-
-def setup_dataloaders(args, tokenizer, dna_rna_tokenizer, protein_tokenizer):
+def setup_dataset(args, tokenizer, dna_rna_tokenizer, protein_tokenizer):
     """
-    Setup training and evaluation dataloaders using OmicsDataset.
+    Setup training and evaluation OmicsDataset.
     """
     print_rank_0("-------------------init dataset-----------------------")
 
@@ -154,8 +153,6 @@ def setup_dataloaders(args, tokenizer, dna_rna_tokenizer, protein_tokenizer):
         num_dp_ranks = 1
 
     print_rank_0(f"Rank: {dp_rank}, World Size: {num_dp_ranks}")
-
-    training_args = TrainingArguments()
 
     # 创建数据集配置
     train_config = DatasetConfig(
@@ -172,19 +169,17 @@ def setup_dataloaders(args, tokenizer, dna_rna_tokenizer, protein_tokenizer):
     # 创建训练数据集
     print_rank_0(f"Loading training dataset from {args.train_dataset_path}")
 
-    with training_args.main_process_first(desc='load train dataset', local=True):
-        train_dataset = OmicsDataset(
-            parquet_file=args.train_dataset_path,
-            tokenizer=tokenizer,
-            dataset_config=train_config,
-            dna_rna_tokenizer=dna_rna_tokenizer,
-            protein_tokenizer=protein_tokenizer,
-            read_nums=args.read_nums,
-            shuffle=True,
-            seed=42,
-            type="Train",
-            cache_file='.cache/train.pt',
-        )
+    train_dataset = OmicsDataset(
+        parquet_file=args.train_dataset_path,
+        tokenizer=tokenizer,
+        dataset_config=train_config,
+        dna_rna_tokenizer=dna_rna_tokenizer,
+        protein_tokenizer=protein_tokenizer,
+        read_nums=args.read_nums,
+        shuffle=True,
+        seed=args.seed,
+        type="Train",
+    )
 
     # 创建评估数据集（如果需要）
     eval_dataset = None
@@ -202,19 +197,17 @@ def setup_dataloaders(args, tokenizer, dna_rna_tokenizer, protein_tokenizer):
             output_field="output",
         )
 
-        with training_args.main_process_first(desc='load eval dataset', local=True):
-            eval_dataset = OmicsDataset(
-                parquet_file=args.eval_dataset_path,
-                tokenizer=tokenizer,
-                dataset_config=eval_config,
-                dna_rna_tokenizer=dna_rna_tokenizer,
-                protein_tokenizer=protein_tokenizer,
-                read_nums=args.eval_read_nums,
-                shuffle=False,
-                seed=42,
-                type="Eval",
-                cache_file='.cache/eval.pt',
-            )
+        eval_dataset = OmicsDataset(
+            parquet_file=args.eval_dataset_path,
+            tokenizer=tokenizer,
+            dataset_config=eval_config,
+            dna_rna_tokenizer=dna_rna_tokenizer,
+            protein_tokenizer=protein_tokenizer,
+            read_nums=args.eval_read_nums,
+            shuffle=False,
+            seed=args.seed,
+            type="Eval",
+        )
 
     return train_dataset, eval_dataset
 
@@ -264,12 +257,6 @@ def main():
                         type=str,
                         default=None,
                         help="Profile log directory")
-    parser.add_argument(
-        "--global-rank",
-        default=-1,
-        type=int,
-        help="Global rank for distributed training",
-    )
 
     # Model
     parser.add_argument("--text-model-path",
@@ -561,10 +548,28 @@ def main():
                         help="Whether to use liger for optimizer state offload, see https://github.com/linkedin/Liger-Kernel")
 
     parser.add_argument("--dataloader_pin_memory", action="store_true")
+    parser.add_argument("--seed", type=int, default=42, help="The Answer to Life, the Universe, and Everything is 42.")
 
     # Add DeepSpeed arguments
     parser = deepspeed.add_config_arguments(parser)
     args = parser.parse_args()
+
+    # Setup random seed number
+    set_seed(args.seed)
+
+    # Bind device id and initialize distributed training
+    local_rank = int(os.environ["LOCAL_RANK"])
+    torch.cuda.set_device("cuda:{}".format(local_rank))
+
+    # 先让 PyTorch 带 device_id 初始化
+    dist.init_process_group(
+            backend="nccl",
+            device_id=torch.device(f"cuda:{local_rank}")   # 关键行
+    )
+
+    # 再让 DeepSpeed 只初始化它自己的 comm
+    deepspeed.init_distributed(dist_backend="nccl", init_method="env://",
+                            auto_mpi_discovery=False, verbose=False)
 
     # Calculate GPU count for DeepSpeed
     if dist.is_initialized():
@@ -577,15 +582,13 @@ def main():
         args.clip_grad_max_norm = 1.0
     writer = None
     try:
-        # Initialize distributed training
-        deepspeed.init_distributed()
 
         # Set global_rank to current process rank
-        args.global_rank = dist.get_rank()
+        global_rank = dist.get_rank()    
 
         # Setup logging
         writer = None
-        if args.global_rank == 0:
+        if global_rank == 0:
             current_time = datetime.now().strftime("%y-%m-%d_%H-%M")
             if args.swanlab:
                 init_swanlab_rank_0(args, experiment_suffix=current_time)
@@ -598,8 +601,9 @@ def main():
         model, _ = setup_model_and_optimizer(args, tokenizer)
 
         # Get dataloaders and convert to datasets for Transformers Trainer
-        train_dataset, eval_dataset = setup_dataloaders(
+        train_dataset, eval_dataset = setup_dataset(
             args, tokenizer, dna_rna_tokenizer, protein_tokenizer)
+        print('setup dataloader finished')
 
         # Apply parameter freezing or pre-train lora based on args.use-lora
         if args.use_lora:
@@ -610,7 +614,7 @@ def main():
             set_up_trainable_param(model, args)
 
         # 将所有参数打印出来以进行调试
-        if args.global_rank == 0:
+        if global_rank == 0:
             print_rank_0("-------- Training Configuration --------")
             print_rank_0(
                 f"Model: {args.text_model_path} + {args.dna_rna_model_path}")
@@ -644,7 +648,7 @@ def main():
 
     except Exception as e:
         traceback_info = traceback.format_exc()
-        if args.global_rank == 0:
+        if global_rank == 0:
             print_rank_0(traceback_info, logging.ERROR)
         else:
             print(traceback_info)
