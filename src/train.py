@@ -211,41 +211,6 @@ def setup_dataset(args, tokenizer, dna_rna_tokenizer, protein_tokenizer):
 
     return train_dataset, eval_dataset
 
-# def setup_dataloader(args, tokenizer, dna_rna_tokenizer, protein_tokenizer):
-#     """
-#     Setup training and evaluation dataloaders using OmicsDataset.
-#     """
-#     train_dataset, eval_dataset = setup_dataset(args, tokenizer, dna_rna_tokenizer, protein_tokenizer)
-
-#     train_sampler = DistributedSampler(train_dataset,
-#         num_replicas=get_world_size(),
-#         rank=get_rank(),
-#         shuffle=True,      # 每个 epoch 会重新打乱顺序
-#         seed=args.seed)
-
-#     train_dataloader = DataLoader(train_dataset,
-#         batch_size=args.per_device_train_batch_size,
-#         sampler=train_sampler,   # 不要 shuffle=True
-#         num_workers=2, # 服务器 2~4 足够，不打算设计成可配置
-#         pin_memory=True)
-
-#     # 创建评估数据集（如果需要）
-#     eval_loader = None
-#     if eval_dataset:
-#         eval_sampler = DistributedSampler(eval_dataset,
-#             num_replicas=get_world_size(),
-#             rank=get_rank(),
-#             shuffle=True,
-#             seed=args.seed)
-
-#         train_dataloader = DataLoader(eval_dataset,
-#             batch_size=args.per_device_eval_batch_size,
-#             sampler=eval_sampler,   # 不要 shuffle=True
-#             num_workers=2, # 服务器 2~4 足够，不打算设计成可配置
-#             pin_memory=True)
-
-#     return train_dataloader, train_dataloader
-
 
 def main():
     parser = ArgumentParser()

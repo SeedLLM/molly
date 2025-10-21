@@ -91,15 +91,6 @@ class OmicsDataset(Dataset):
         self.assistant_start_ids = self.tokenizer.encode(
             "<|im_end|>\n<|im_start|>assistant\n", add_special_tokens=False)
 
-        # Load cache first
-        # print("Start load cache data")
-        # # if not is_main_process() and os.path.exists(cache_file):
-        # if os.path.exists(cache_file):
-        #     rank = dist.get_rank()
-        #     with time_count(f"Rank {rank} load {cache_file}"):
-        #         self.data = torch.load(cache_file, map_location='cpu', mmap=True)
-        #     return
-
         # Load data
         print(f"Loading parquet data from {parquet_file}")
         df = pd.read_parquet(parquet_file)
@@ -114,21 +105,6 @@ class OmicsDataset(Dataset):
             df = df.sample(frac=1, random_state=rng).reset_index(drop=True)
 
         self.df = df
-        # records = df.to_dict("records")
-
-        # self.data = list(
-        #     tqdm(
-        #         map(partial(self._preprocess_sample, tokenizer=self.tokenizer), records),
-        #         total=len(records),
-        #         desc="Preprocessing",
-        #     )
-        # )
-
-        # if is_main_process():
-        #     print(f'Dump cache data to {cache_file}')
-        #     os.makedirs(os.path.dirname(cache_file), exist_ok=True)
-        #     torch.save(self.data, cache_file)
-        # print(f"Loaded {len(self.data)} samples from parquet file")
 
     def __len__(self) -> int:
         """Return the number of items in the dataset."""
