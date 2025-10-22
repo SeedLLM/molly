@@ -125,14 +125,6 @@ def setup_model_and_optimizer(args, tokenizer):
 
         print_rank_0("Base models loaded successfully")
 
-    # 4. 冻结多组学Encoder的参数
-    if args.freeze_bio:
-        print_rank_0("Freezing DNA/RNA and protein model parameters")
-        for p in omics_one.dna_rna_model.parameters():
-            p.requires_grad = False
-        for p in omics_one.protein_model.parameters():
-            p.requires_grad = False
-
     total = sum(p.numel() for p in omics_one.parameters())
     print_rank_0(f"Total parameters: {total:,}")
 
@@ -306,11 +298,24 @@ def main():
         help="Load the best model at the end of training",
     )
     parser.add_argument(
-        "--freeze-bio",
+        "--train-bio",
         action="store_true",
-        default=True,
+        default=False,
         help="Freeze the parameters of the DNA/RNA and protein models",
     )
+    parser.add_argument(
+        "--train-mlp",
+        action="store_true",
+        default=False,
+        help="Freeze the parameters of the DNA/RNA and protein mlp models",
+    )
+    parser.add_argument(
+        "--train-llm",
+        action="store_true",
+        default=False,
+        help="Freeze the parameters of the llm",
+    )
+
     parser.add_argument("--bf16",
                         action="store_true",
                         default=False,

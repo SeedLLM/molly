@@ -301,18 +301,18 @@ def enable_trainable_params(model, enable_list):
 
 def set_up_trainable_param(model, args):
     for param in model.dna_rna_model.parameters():
-        param.requires_grad = False
+        param.requires_grad = args.train_bio
 
     for param in model.protein_model.parameters():
-        param.requires_grad = False
+        param.requires_grad = args.train_bio
 
     for param in model.dna_rna_projector.parameters():
-        param.requires_grad = True
+        param.requires_grad = args.train_mlp
     for param in model.protein_projector.parameters():
-        param.requires_grad = True
+        param.requires_grad = args.train_mlp
 
     for param in model.model.parameters():
-        param.requires_grad = True
+        param.requires_grad = args.train_llm
 
 
 def pre_train_lora(model, args):
