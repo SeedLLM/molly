@@ -13,7 +13,9 @@ options="--experiment-name $experiment_name \
 --protein-model-path /mnt/shared-storage-user/ai4agr-share/lijinzhe/PreModel/esm2_t33_650M_UR50D/ \
 --protein-k-tokens 1024 \
 --device cuda \
---freeze-bio \
+--train-bio \
+--train-mlp \
+--train-llm \
 --train-dataset-path /mnt/shared-storage-user/ai4agr-share/lijinzhe/data/BioMLLM/train-val-test/train_all_task_standard.parquet \
 --eval-dataset-path /mnt/shared-storage-user/ai4agr-share/lijinzhe/data/BioMLLM/train-val-test/dev_all_task_standard.parquet \
 --max-len 3072 \
