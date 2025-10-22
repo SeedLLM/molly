@@ -1,6 +1,6 @@
 enable_list="multimodal model.model.embed_tokens model.model.layers model.lm_head"
-experiment_name="Qwen3_8B_Omics_sft_1003_all_task_exp1"
-output_path="${experiment_name}"
+experiment_name="Qwen3_1.7B_Omics_sft_1003_all_task_exp1_test"
+output_path="/mnt/shared-storage-user/ai4agr-share/lijinzhe/TaskRes/MOLLM/ResModel/${experiment_name}"
 
 # export TORCH_NCCL_ASYNC_ERROR_HANDLING=1
 # export NCCL_TIMEOUT=3600
@@ -14,17 +14,17 @@ options="--experiment-name $experiment_name \
 --protein-k-tokens 1024 \
 --device cuda \
 --freeze-bio \
---train-dataset-path /mnt/shared-storage-user/ai4agr-share/lijinzhe/data/BioMLLM/train-val-test/train_all_task.parquet \
---eval-dataset-path /mnt/shared-storage-user/ai4agr-share/lijinzhe/data/BioMLLM/train-val-test/dev_all_task.parquet \
+--train-dataset-path /mnt/shared-storage-user/ai4agr-share/lijinzhe/data/BioMLLM/train-val-test/train_all_task_standard.parquet \
+--eval-dataset-path /mnt/shared-storage-user/ai4agr-share/lijinzhe/data/BioMLLM/train-val-test/dev_all_task_standard.parquet \
 --max-len 3072 \
 --max-src-len 3072 \
 --eval-max-len 3072 \
 --eval-max-src-len 3072 \
 --mode sft \
---per_device_train_batch_size 1 \
+--per_device_train_batch_size 8 \
 --per_device_eval_batch_size 2 \
---read-nums 1024000 \
---eval-read-nums 1024 \
+--read-nums 10240000000 \
+--eval-read-nums 1024000000 \
 --num_train_epochs 2 \
 --learning_rate 3e-5 \
 --bf16 \
@@ -39,9 +39,9 @@ options="--experiment-name $experiment_name \
 --save-total-limit 500 \
 --warmup_ratio 0.1 \
 --early-stopping-patience 1000000000 \
---gradient-accumulation-steps 2 \
+--gradient-accumulation-steps 4 \
 --save_only_model \
---attn_impl flash_attention_3 \
+--attn_impl flash_attention_2 \
 --use_liger True \
 --swanlab \
 --swanlab-mode local \
@@ -57,7 +57,7 @@ options="--experiment-name $experiment_name \
 
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 deepspeed \
---include localhost:0,1,2,3 \
+--include localhost:0,1,2,3,4,5,6,7 \
 src/train.py \
---deepspeed_config src/configs/ds_z2_config.json \
+--deepspeed_config src/configs/ds_z0_config.json \
 $options

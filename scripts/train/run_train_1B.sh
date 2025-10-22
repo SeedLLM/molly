@@ -1,18 +1,18 @@
 enable_list="multimodal model.model.embed_tokens model.model.layers model.lm_head"
-experiment_name="Qwen3_1B_Omics_sft_0814_10_task_exp2"
-output_path="/tos-bjml-ai4agr/lijinzhe/BioMLLM/RES_Model/${experiment_name}"
+experiment_name="Qwen3_8B_Omics_sft_1014_all_task_test"
+output_path="/mnt/shared-storage-user/ai4agr-share/lijinzhe/TaskRes/MOLLM/ResModel/${experiment_name}"
 
 options="--experiment-name $experiment_name \
 --output_dir $output_path \
---text-model-path /tos-bjml-ai4agr/lijinzhe/BioMLLM/Qwen3-1.7B \
---dna-rna-model-path /tos-bjml-ai4agr/lijinzhe/BioModel/nucleotide-transformer/  \
+--text-model-path /mnt/shared-storage-user/ai4agr-share/lijinzhe/PreModel/Qwen3-8B \
+--dna-rna-model-path /mnt/shared-storage-user/ai4agr-share/lijinzhe/PreModel/nucleotide-transformer/  \
 --dna-rna-k-tokens 1024 \
---protein-model-path /tos-bjml-ai4agr/lijinzhe/BioMLLM/esm2_t33_650M_UR50D/ \
+--protein-model-path /mnt/shared-storage-user/ai4agr-share/lijinzhe/PreModel/esm2_t33_650M_UR50D/ \
 --protein-k-tokens 1024 \
 --device cuda \
 --freeze-bio \
---train-dataset-path /tos-bjml-ai4agr/lijinzhe/dataset/BioMLLM/TargetTask0808/train_10_task.parquet \
---eval-dataset-path /tos-bjml-ai4agr/lijinzhe/dataset/BioMLLM/TargetTask0808/val_10_task.parquet \
+--train-dataset-path /mnt/shared-storage-user/ai4agr-share/lijinzhe/data/BioMLLM/train-val-test/train_all_task_standard.parquet \
+--eval-dataset-path /mnt/shared-storage-user/ai4agr-share/lijinzhe/data/BioMLLM/train-val-test/dev_all_task_standard.parquet \
 --max-len 3072 \
 --max-src-len 3072 \
 --eval-max-len 3072 \
@@ -20,8 +20,8 @@ options="--experiment-name $experiment_name \
 --mode sft \
 --per_device_train_batch_size 2 \
 --per_device_eval_batch_size 4 \
---read-nums 709388 \
---eval-read-nums 51276 \
+--read-nums 100000 \
+--eval-read-nums 10000 \
 --num_train_epochs 5 \
 --learning_rate 3e-5 \
 --bf16 \
@@ -35,7 +35,7 @@ options="--experiment-name $experiment_name \
 --save_trainable False \
 --save-total-limit 50 \
 --swanlab \
---swanlab-mode cloud \
+--swanlab-mode local \
 --swanlab-team BioMLLM_report \
 --swanlab-project BioMLLM \
 --report_to swanlab \
@@ -52,7 +52,7 @@ options="--experiment-name $experiment_name \
 # --load-pretrained \
 
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
-deepspeed --include localhost:0,1,2,3 \
+deepspeed --include localhost:0,1,2,3,4,5,7,8 \
 src/train.py \
 --deepspeed_config src/configs/ds_z2_config.json \
 $options

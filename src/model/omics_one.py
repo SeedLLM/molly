@@ -160,7 +160,6 @@ class OmicsOne(nn.Module):
 
         # Get token embeddings
         hidden_states = self.model.get_input_embeddings()(input_ids)
-
         if omic_ids is not None:
             # Sanity check
             for i in range(len(omic_ids)):

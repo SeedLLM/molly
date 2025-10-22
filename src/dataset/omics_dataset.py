@@ -161,12 +161,12 @@ class OmicsDataset(Dataset):
 
         self._regex_map = {
             "dna":
-            re.compile(r"<dna>\s*([ACGTNacgtn]+)\s*<dna>"),
+            re.compile(r"<dna>\s*([ACGTNacgtn]+)\s*</dna>"),
             "rna":
-            re.compile(r"<rna>\s*([ACGTNacgtn]+)\s*<rna>"),
+            re.compile(r"<rna>\s*([ACGTNacgtn]+)\s*</rna>"),
             "protein":
             re.compile(
-                r"<protein>\s*([ACDEFGHIKLMNPQRSTVWYBXZOU]+)\s*<protein>"),
+                r"<protein>\s*([ACDEFGHIKLMNPQRSTVWYBXZOU]+)\s*</protein>"),
         }
 
     def format_raw(self, sample: pd.core.series.Series, tokenizer) -> dict:

@@ -108,7 +108,7 @@ class MultiModalInfer:
 
         # ‑- Device --------------------------------------------------------------
         self.device = torch.device(
-            "cuda:2"
+            "cuda:0"
             if self.args.device == "cuda" and torch.cuda.is_available()
             else "cpu"
         )
