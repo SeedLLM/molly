@@ -42,7 +42,7 @@ Omics-Specific Models（OSMs）指代各自组学赛道中性能领先的专用�
         else:
             model_tp_plan = model._tp_plan
     
-    ## old code
+    ## model._tp_plan -> model_tp_plan
         tp_plan_regex = (
             re.compile("|".join([re.escape(plan) for plan in model_tp_plan]))
             if _torch_distributed_available and torch.distributed.is_initialized()
@@ -59,22 +59,6 @@ Omics-Specific Models（OSMs）指代各自组学赛道中性能领先的专用�
     
     # or for test
     ./scripts/train/run_train_mini.sh
-    ```
-
-4. Fix qwen3_8B + deepspeed training stuck
-
-    Open `/usr/local/lib/python3.10/dist-packages/deepspeed/runtime/bf16_optimizer.py`
-    
-    ```python
-    294         if all_groups_norm <= 0.:
-    299                 dist.barrier()
-    300
-    301         if self.clip_grad > 0.:
-    302             clip_tensors_by_global_norm(input_tensors=self.get_grads_for_norm(for_clipping=True),
-    303                                         max_norm=self.clip_grad,
-    304                                         global_norm=all_groups_norm,
-    305                                         mpu=self.mpu,
-    306                                         use_graph=self.graph_harvesting)
     ```
 
 ## :pushpin: LICENSE
