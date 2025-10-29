@@ -1,12 +1,11 @@
 enable_list="multimodal model.model.embed_tokens model.model.layers model.lm_head"
 experiment_name="Qwen3_8B_Omics_sft_1014_all_task_test"
-output_path="/mnt/shared-storage-user/ai4agr-share/lijinzhe/TaskRes/MOLLM/ResModel/${experiment_name}"
+output_path="${experiment_name}"
 
 export OMP_NUM_THREADS=4
 export MKL_NUM_THREADS=4
 
-export DEEPSPEED_GRAD_NORM_IS_NAN_INF_BYPASS=1
-
+# export TORCH_NCCL_HEARTBEAT_TIMEOUT_SEC=3600
 # export TORCH_NCCL_ASYNC_ERROR_HANDLING=1
 # export NCCL_TIMEOUT=3600
 
@@ -18,7 +17,6 @@ options="--experiment-name $experiment_name \
 --protein-model-path /mnt/shared-storage-user/ai4agr-share/lijinzhe/PreModel/esm2_t33_650M_UR50D/ \
 --protein-k-tokens 1024 \
 --device cuda \
---train-bio \
 --train-mlp \
 --train-llm \
 --train-dataset-path /mnt/shared-storage-user/ai4agr-share/lijinzhe/data/BioMLLM/train-val-test/train_all_task_standard.parquet \
@@ -28,8 +26,8 @@ options="--experiment-name $experiment_name \
 --eval-max-len 3072 \
 --eval-max-src-len 3072 \
 --mode sft \
---per_device_train_batch_size 2 \
---per_device_eval_batch_size 2 \
+--per_device_train_batch_size 1 \
+--per_device_eval_batch_size 1 \
 --read-nums 10240000000 \
 --eval-read-nums 10240000000 \
 --num_train_epochs 5 \
@@ -48,7 +46,7 @@ options="--experiment-name $experiment_name \
 --early-stopping-patience 1000000000 \
 --gradient-accumulation-steps 2 \
 --save_only_model \
---attn_impl flash_attention_2 \
+--attn_impl flash_attention_3 \
 --use_liger True \
 --swanlab \
 --swanlab-mode local \
@@ -63,7 +61,7 @@ options="--experiment-name $experiment_name \
 # --load-pretrained \
 
 deepspeed \
---include localhost:0,1,2,3,4,5,6,7 \
+--include localhost:0,1,2,3 \
 src/train.py \
 --deepspeed_config src/configs/ds_z0_config.json \
 $options

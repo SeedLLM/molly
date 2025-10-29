@@ -56,6 +56,7 @@ class OmicsTrainer(Trainer):
             for k, v in vars(args).items()
             if k in training_args_params and v is not None
         }
+
         training_args = TrainingArguments(**training_args_dict)
 
         args = training_args
