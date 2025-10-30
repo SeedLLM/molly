@@ -1,12 +1,11 @@
 enable_list="multimodal model.model.embed_tokens model.model.layers model.lm_head"
 experiment_name="Qwen3_4B_Omics_sft_1014_all_task_test"
-output_path="/mnt/shared-storage-user/ai4agr-share/lijinzhe/TaskRes/MOLLM/ResModel/${experiment_name}"
+output_path="${experiment_name}"
 
-export OMP_NUM_THREADS=8
-export MKL_NUM_THREADS=8
-
-export DEEPSPEED_GRAD_NORM_IS_NAN_INF_BYPASS=1
-
+export OMP_NUM_THREADS=2
+export MKL_NUM_THREADS=2
+export DEEPSPEED_LOG_LEVEL=info
+# export NCCL_DEBUG=INFO      # 看谁在 barrier 拖时间
 # export TORCH_NCCL_ASYNC_ERROR_HANDLING=1
 # export NCCL_TIMEOUT=3600
 
@@ -18,7 +17,6 @@ options="--experiment-name $experiment_name \
 --protein-model-path /mnt/shared-storage-user/ai4agr-share/lijinzhe/PreModel/esm2_t33_650M_UR50D/ \
 --protein-k-tokens 1024 \
 --device cuda \
---train-bio \
 --train-mlp \
 --train-llm \
 --train-dataset-path /mnt/shared-storage-user/ai4agr-share/lijinzhe/data/BioMLLM/train-val-test/train_all_task_standard.parquet \
@@ -28,8 +26,8 @@ options="--experiment-name $experiment_name \
 --eval-max-len 3072 \
 --eval-max-src-len 3072 \
 --mode sft \
---per_device_train_batch_size 4 \
---per_device_eval_batch_size 2 \
+--per_device_train_batch_size 1 \
+--per_device_eval_batch_size 1 \
 --read-nums 10240000000 \
 --eval-read-nums 10240000000 \
 --num_train_epochs 5 \
@@ -63,10 +61,10 @@ options="--experiment-name $experiment_name \
 # --load-pretrained \
 
 deepspeed \
---include localhost:0,1,2,3,4,5,6,7 \
+--include localhost:0,1,2,3 \
 src/train.py \
 --deepspeed_config src/configs/ds_z2_config.json \
 $options
 
 
-# py-spy dump -p 60497 --locals | head -60
+# py-spy dump -p 44180 --locals | head -60

@@ -1,6 +1,6 @@
 enable_list="multimodal model.model.embed_tokens model.model.layers model.lm_head"
 experiment_name="Qwen3_1.7B_Omics_sft_1003_all_task_exp1_test"
-output_path="/mnt/shared-storage-user/ai4agr-share/lijinzhe/TaskRes/MOLLM/ResModel/${experiment_name}"
+output_path="{experiment_name}"
 
 # export TORCH_NCCL_ASYNC_ERROR_HANDLING=1
 # export NCCL_TIMEOUT=3600
@@ -13,7 +13,6 @@ options="--experiment-name $experiment_name \
 --protein-model-path /mnt/shared-storage-user/ai4agr-share/lijinzhe/PreModel/esm2_t33_650M_UR50D/ \
 --protein-k-tokens 1024 \
 --device cuda \
---train-bio \
 --train-mlp \
 --train-llm \
 --train-dataset-path /mnt/shared-storage-user/ai4agr-share/lijinzhe/data/BioMLLM/train-val-test/train_all_task_standard.parquet \

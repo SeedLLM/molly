@@ -273,33 +273,55 @@ def get_learning_rate_scheduler(optimizer, iteration, args):
     return lr_scheduler
 
 
-def disable_untrainable_params(model, unable_list):
-    for n, p in model.named_parameters():
-        flag = False
-        for e in unable_list:
-            if e.lower() in n.lower():
-                flag = True
-                break
-        if not flag:
-            p.requires_grad_(True)
+def freeze_subtree(parent: nn.Module, name: str):
+    """
+    把 parent.<name> 整棵子树里的所有 Parameter 注销并重新注册为 buffer，
+    从而让它们不再出现在 parent.parameters()。
+    """
+    # 1. 先走到目标子模块
+    *prefix, last_key = name.split('.')
+    mod = parent
+    for k in prefix:
+        k = int(k) if k.isdigit() else k
+        mod = mod[k] if isinstance(mod, (nn.ModuleList, nn.Sequential)) else getattr(mod, k)
+
+    # 2. last_key 可能是数字下标
+    last_key = int(last_key) if last_key.isdigit() else last_key
+    sub_module = mod[last_key] if isinstance(mod, (nn.ModuleList, nn.Sequential)) else getattr(mod, last_key)
+
+    # 3. 现在开始摘叶子
+    for pname, param in list(sub_module.named_parameters(recurse=True)):
+        *path, leaf = pname.split('.')
+        cur = sub_module
+        for k in path:
+            k = int(k) if k.isdigit() else k
+            cur = cur[k] if isinstance(cur, (nn.ModuleList, nn.Sequential)) else getattr(cur, k)
+
+        leaf = int(leaf) if leaf.isdigit() else leaf
+        param_obj = cur[leaf] if isinstance(cur, (nn.ModuleList, nn.Sequential)) else getattr(cur, leaf)
+
+        # 摘掉
+        if isinstance(cur, (nn.ModuleList, nn.Sequential)):
+            del cur[leaf]
         else:
-            p.requires_grad_(False)
-
-
-def enable_trainable_params(model, enable_list):
-    for n, p in model.named_parameters():
-        flag = False
-        for e in enable_list:
-            if e.lower() in n.lower():
-                flag = True
-                break
-        if not flag:
-            p.requires_grad_(False)
-        else:
-            p.requires_grad_(True)
-
+            delattr(cur, leaf)
+        # 注册成 buffer
+        cur.register_buffer(str(leaf) if isinstance(leaf, int) else leaf,
+                            param_obj.detach())
 
 def set_up_trainable_param(model, args):
+
+    if not args.train_bio:
+        freeze_subtree(model, 'dna_rna_model')
+        freeze_subtree(model, 'protein_model')
+
+    if not args.train_mlp:
+        freeze_subtree(model, 'dna_rna_projector')
+        freeze_subtree(model, 'protein_projector')
+
+    if not args.train_llm:
+        freeze_subtree(model, 'model')
+
     for param in model.dna_rna_model.parameters():
         param.requires_grad = args.train_bio
 
@@ -314,6 +336,10 @@ def set_up_trainable_param(model, args):
     for param in model.model.parameters():
         param.requires_grad = args.train_llm
 
+
+    # masked_model = MaskParams(model, black_list=['dna_rna_model'])
+    # print('visible params:', sum(1 for _ in masked_model.parameters()))
+    # return masked_model
 
 def pre_train_lora(model, args):
     for param in model.dna_rna_model.parameters():

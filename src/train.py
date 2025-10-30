@@ -1,7 +1,7 @@
 import logging
 import traceback
 from argparse import ArgumentParser
-from datetime import datetime
+import datetime
 
 import os
 import deepspeed
@@ -569,7 +569,8 @@ def main():
     # 先让 PyTorch 带 device_id 初始化
     dist.init_process_group(
             backend="nccl",
-            device_id=torch.device(f"cuda:{local_rank}")   # 关键行
+            device_id=torch.device(f"cuda:{local_rank}"),
+            timeout=datetime.timedelta(seconds=1800),
     )
 
     # 再让 DeepSpeed 只初始化它自己的 comm
@@ -589,12 +590,12 @@ def main():
     try:
 
         # Set global_rank to current process rank
-        global_rank = dist.get_rank()    
+        global_rank = dist.get_rank()
 
         # Setup logging
         writer = None
         if global_rank == 0:
-            current_time = datetime.now().strftime("%y-%m-%d_%H-%M")
+            current_time = datetime.datetime.now().strftime("%y-%m-%d_%H-%M")
             if args.swanlab:
                 init_swanlab_rank_0(args, experiment_suffix=current_time)
 
@@ -634,6 +635,9 @@ def main():
         args.deepspeed = args.deepspeed_config
 
         try:
+
+            print(f"Remaining params: {sum(1 for _ in model.parameters())}")
+
             trainer = OmicsTrainer(
                 model=model,
                 args=args,
