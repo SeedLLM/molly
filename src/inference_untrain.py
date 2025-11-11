@@ -153,7 +153,6 @@ class MultiModalInfer:
         json_file = open(args.json_file, "a", encoding="utf-8")
         test_config = DatasetConfig(
             max_len=args.max_length,
-            max_src_len=args.max_length,
             mode="sft",
             padding=True,
             input_field="input",
@@ -183,7 +182,6 @@ class MultiModalInfer:
                 outputs = self.model.generate(
                     input_ids=batch["input_ids"].to(self.device),
                     attention_mask=batch["attention_mask"].to(self.device),
-                    omic_ids=batch["omic_ids"],
                     omic_start_pos_list=batch["omic_start_pos_list"],
                     max_length=args.max_length,
                     temperature=args.temperature,

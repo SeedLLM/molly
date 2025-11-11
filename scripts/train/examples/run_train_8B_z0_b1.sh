@@ -21,8 +21,7 @@ options="--experiment-name $experiment_name \
 --train-llm \
 --train-dataset-path /mnt/shared-storage-user/ai4agr-share/lijinzhe/data/BioMLLM/train-val-test/train_all_task_standard.parquet \
 --eval-dataset-path /mnt/shared-storage-user/ai4agr-share/lijinzhe/data/BioMLLM/train-val-test/dev_all_task_standard.parquet \
---max-len 3072 \
---max-src-len 3072 \
+--max-len 8192 \
 --eval-max-len 3072 \
 --eval-max-src-len 3072 \
 --mode sft \
