@@ -431,30 +431,38 @@ def qwen_omics_collate_fn(batch):
         pack_omic_ids = []
         pack_omic_info_list = []
 
+        offset = 0
         for sample in samples:
             _input_ids = sample["input_ids"]
             pack_input_ids += _input_ids
-            pack_input_ids += list(range(len(_input_ids)))
+            pack_postion_ids += list(range(len(_input_ids)))
             pack_labels += sample["labels"]
             pack_attention_mask += sample["attention_mask"]
             pack_omic_ids += sample.get("omic_ids", None)
-            pack_omic_info_list += sample.get("omic_info_list", [])
+            omic_info_list = sample.get("omic_info_list", [])
+
+            # 调整 offset
+            for i in range(len(omic_info_list)):
+                omic_info_list[i]['start'] += offset
+
+            pack_omic_info_list += omic_info_list
+            offset += len(_input_ids)
 
         # Add padding if needed
         if pad_len := self.max_len - len(input_ids) > 0:
             pack_input_ids.extend([self.pad_id] * pad_len)
+            pack_postion_ids.extend([0] * pad_len)
             pack_labels.extend([-100] * pad_len)
             # more efficient flash_attn 
             pack_attention_mask.extend([1] * pad_len)
-            pack_postion_ids.extend([0] * pad_len)
 
         return {
-            "input_ids": pack_input_ids,
-            "labels": pack_labels,
-            "poistion_ids": pack_postion_ids,
-            "attention_mask": pack_attention_mask,
+            "input_ids": torch.LongTensor(pack_input_ids),
+            "labels": torch.LongTensor(pack_labels),
+            "poistion_ids": torch.LongTensor(pack_postion_ids),
+            "attention_mask": torch.LongTensor(pack_attention_mask),
             "omic_info_list": pack_omic_info_list,
-            "omic_ids": pack_omic_ids,
+            "omic_ids": torch.LongTensor(pack_omic_ids),
         }
 
     # 内部折叠，输入 List[List[Dict]]， 折叠内层 List，得到 List[Dict]
