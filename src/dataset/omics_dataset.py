@@ -21,7 +21,6 @@ class DatasetConfig:
     # length of text_omics_ids + label_ids + ml_format 
     max_len: int = 4096
     mode: str = "sft"
-    cal_metric_pos: int = -1
     padding: bool = True
     input_field: str = "input"
     output_field: str = "output"
@@ -126,6 +125,9 @@ class OmicsDataset(Dataset):
 
         os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
+        if self.shuffle:
+            print(f"`OmicsDataset` shuffle deprecated.")
+
         self.parquet_file = parquet_file
         self.tokenizer = tokenizer
         self.dna_rna_tokenizer = dna_rna_tokenizer
@@ -139,7 +141,6 @@ class OmicsDataset(Dataset):
         self.dna_rna_project_token_num = dataset_config.dna_rna_k_tokens
         self.protein_project_token_num = dataset_config.protein_k_tokens
         self.mode = dataset_config.mode
-        self.cal_metric_pos = dataset_config.cal_metric_pos
         self.padding = dataset_config.padding
         self.dataset_type = type
         self.packing = False
@@ -165,11 +166,11 @@ class OmicsDataset(Dataset):
 
         if self.packing:
             self.batch_input_indices = self.pack_input_ids(df=df, max_token_length=self.max_len)
+            self.dataset_length = len(self.batch_input_indices)
         else:
             self.batch_input_indices = None
+            self.dataset_length = len(df)
         
-        if self.shuffle:
-            print(f"`OmicsDataset` shuffle deprecated.")
         self.df = df
 
     def pack_input_ids(self, df: pd.core.frame.DataFrame, max_token_length: int) -> List[List[int]]:
@@ -201,28 +202,32 @@ class OmicsDataset(Dataset):
 
     def __len__(self) -> int:
         """Return the number of items in the (packed) dataset."""
-        if self.packing:
-            # packed length
-            return len(self.batch_input_indices)
-        return len(self.df)
+        return self.dataset_length
 
-    def __getitem__(self, idx: int) -> Dict[str, torch.Tensor]:
+    def __getitem__(self, idx: int) -> List[Dict[str, List[int]]]:
         """Return a specific item from the (packed) dataset."""
         # Ensure index is valid
-        if idx < 0 or idx >= len(self.df):
+        if idx < 0 or idx >= self.dataset_length:
             raise IndexError(
-                f"Index {idx} out of bounds for dataset with {len(self.df)} items"
+                f"Index {idx} out of bounds for dataset with {self.dataset_length} items"
             )
 
+        if self.packing:
+            samples = []
+            for index in self.batch_input_indices[idx]:
+                sample = self.format_raw(sample=self.df.loc[index], text_tokenizer=self.tokenizer, encode_sequence_fn=self._encode_sequence)
+                assert len(sample["omic_ids"]) == len(
+                    sample["omic_info_list"]
+                ), f"Mismatch in Omic IDs and Omic info for sample {idx}: {len(sample['omic_ids'])}\
+                vs {len(sample['omic_info_list'])}"
+                samples.append(sample)
+            return samples
+
         sample = self.format_raw(sample=self.df.loc[idx], text_tokenizer=self.tokenizer, encode_sequence_fn=self._encode_sequence)
-        assert len(sample["omic_ids"]) == len(
-            sample["omic_info_list"]
-        ), f"Mismatch in Omic IDs and Omic info for sample {idx}: {len(sample['omic_ids'])}\
-        vs {len(sample['omic_info_list'])}"
-        return sample
+        return [sample]
 
 
-    def format_raw(self, sample: pd.core.series.Series, text_tokenizer, encode_sequence_fn: Callable[[str, List[int]], List[int]]) -> dict:
+    def format_raw(self, sample: pd.core.series.Series, text_tokenizer, encode_sequence_fn: Callable[[str, List[int]], List[int]]) -> Dict[str, Any]:
         """
         Format a Parquet example into DNA-LLM format suitable for processing.
 
@@ -317,10 +322,7 @@ class OmicsDataset(Dataset):
             encoded_seq = encode_sequence_fn(seq, seq_type)
             omic_ids_list.append(encoded_seq)
 
-        # 初始化 cal_metric_pos 为 None
-        cal_metric_pos = None
         labels = None
-
 
         # Process output based on mode
         if self.mode == "pretrain":
@@ -346,12 +348,6 @@ class OmicsDataset(Dataset):
                 # print(f"Truncating input_ids from {len(input_ids)} to {self.max_len-1}")
                 input_ids = input_ids[:self.max_len - 1] + [self.eos_id]
                 labels = labels[:self.max_len - 1] + [self.eos_id]
-
-            # Calculate metric position
-            if self.cal_metric_pos is not None:
-                cal_metric_pos = input_len + 1 + self.cal_metric_pos
-            elif len(output_ids) > 0:
-                cal_metric_pos = input_len + 1
         else:
             input_len = len(input_ids)
 
@@ -375,19 +371,14 @@ class OmicsDataset(Dataset):
                 "raw_input": input_text,
                 "raw_output": output_text,
             }
-        # Add padding if needed
-        if self.padding and (pad_len := self.max_len - len(input_ids)) > 0:
-            input_ids.extend([self.pad_id] * pad_len)
-            labels.extend([-100] * pad_len)
-            attention_mask.extend([0] * pad_len)
 
+        # return raw list
         return {
-            "input_ids": torch.LongTensor(input_ids),
-            "omic_ids": torch.stack(omic_ids_list),
+            "input_ids": input_ids,
+            "omic_ids": omic_ids_list,
             "omic_info_list": omic_info_list,
-            "labels": torch.LongTensor(labels),
-            "attention_mask": torch.LongTensor(attention_mask),
-            "cal_metric_pos": cal_metric_pos,
+            "labels": labels,
+            "attention_mask": attention_mask,
         }
 
     def _encode_sequence(self, seq: str, seq_type: str) -> torch.LongTensor:
@@ -426,22 +417,70 @@ def qwen_omics_collate_fn(batch):
     Handles variable length DNA sequences and attention masks.
 
     Args:
-        batch: List of samples from the dataset
+        batch: List of (packed) samples from the dataset
 
     Returns:
         Batched tensors suitable for model input
     """
 
-    input_ids = [sample["input_ids"] for sample in batch]
-    labels = [sample["labels"] for sample in batch]
-    attention_mask = [sample["attention_mask"] for sample in batch]
-    cal_metric_pos = [sample.get("cal_metric_pos") for sample in batch]
-    omic_info_lists = [sample.get("omic_info_list", []) for sample in batch]
-    omic_ids = [sample.get("omic_ids", None) for sample in batch]
+    def concat(samples: List[Dict[str, torch.Tensor]]) -> Dict[str, torch.Tensor]:
+        pack_input_ids = []
+        pack_labels = []
+        pack_attention_mask = []
+        pack_postion_ids = []
+        pack_omic_ids = []
+        pack_omic_info_list = []
+
+        for sample in samples:
+            _input_ids = sample["input_ids"]
+            pack_input_ids += _input_ids
+            pack_input_ids += list(range(len(_input_ids)))
+            pack_labels += sample["labels"]
+            pack_attention_mask += sample["attention_mask"]
+            pack_omic_ids += sample.get("omic_ids", None)
+            pack_omic_info_list += sample.get("omic_info_list", [])
+
+        # Add padding if needed
+        if pad_len := self.max_len - len(input_ids) > 0:
+            pack_input_ids.extend([self.pad_id] * pad_len)
+            pack_labels.extend([-100] * pad_len)
+            # more efficient flash_attn 
+            pack_attention_mask.extend([1] * pad_len)
+            pack_postion_ids.extend([0] * pad_len)
+
+        return {
+            "input_ids": pack_input_ids,
+            "labels": pack_labels,
+            "poistion_ids": pack_postion_ids,
+            "attention_mask": pack_attention_mask,
+            "omic_info_list": pack_omic_info_list,
+            "omic_ids": pack_omic_ids,
+        }
+
+    # 内部折叠，输入 List[List[Dict]]， 折叠内层 List，得到 List[Dict]
+    concated = [concat(samples) for samples in batch]
+    # 内外翻转，输入 List[Dict]， 翻转成 Dict[str,List]
+    pivot: Dict[str, List[str]] = {}
+    for d in concated:
+        for k, v in d.items():
+            pivot.setdefault(k, []).append(v)
+
+    # assign
+    input_ids = pivot["input_ids"]
+    labels = pivot["labels"]
+    attention_mask = pivot["attention_mask"]
+    omic_info_lists = pivot["omic_info_list"]
+    omic_ids = pivot["omic_ids"]
+    position_ids = pivot["position_ids"]
 
     input_ids = torch.nn.utils.rnn.pad_sequence(input_ids,
                                                 batch_first=True,
                                                 padding_value=0)
+
+    position_ids = torch.nn.utils.rnn.pad_sequence(position_ids,
+                                                batch_first=True,
+                                                padding_value=0)
+                                                
     labels = torch.nn.utils.rnn.pad_sequence(labels,
                                              batch_first=True,
                                              padding_value=-100)
@@ -461,11 +500,11 @@ def qwen_omics_collate_fn(batch):
 
     return {
         "input_ids": input_ids,
+        "position_ids": position_ids,
         "labels": labels,
         "attention_mask": attention_mask,
         "omic_ids": omic_ids,
         "omic_info_list": omic_info_lists,
-        "cal_metric_pos": cal_metric_pos,
     }
 
 
@@ -483,7 +522,6 @@ def qwen_omics_collate_fn_inference(batch):
 
     input_ids = [sample["input_ids"] for sample in batch]
     attention_mask = [sample["attention_mask"] for sample in batch]
-    cal_metric_pos = [sample.get("cal_metric_pos") for sample in batch]
     omic_info_lists = [sample.get("omic_info_list", []) for sample in batch]
     omic_ids = [sample.get("omic_ids", None) for sample in batch]
 
@@ -514,7 +552,6 @@ def qwen_omics_collate_fn_inference(batch):
         "attention_mask": attention_mask,
         "omic_ids": omic_ids,
         "omic_info_list": omic_info_lists,
-        "cal_metric_pos": cal_metric_pos,
         "input": raw_input,
         "raw_output": raw_output,
         "raw_label": raw_label,
