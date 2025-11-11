@@ -153,7 +153,6 @@ class MultiModalInfer:
         json_file = open(args.json_file, "a", encoding="utf-8")
         test_config = DatasetConfig(
             max_len=args.max_length,
-            max_src_len=args.max_length,
             mode="sft",
             padding=True,
             input_field="input",
