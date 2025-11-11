@@ -1,5 +1,5 @@
 # pylint: skip-file
-from typing import List, Optional, Tuple, Union
+from typing import List, Optional, Tuple, Union, Dict, Any
 
 import torch
 import torch.nn as nn
@@ -49,8 +49,7 @@ class OmicsOne(nn.Module):
     def process_omic_sequences(
         self,
         hidden_states: torch.Tensor,
-        omic_ids_list: List[List[torch.LongTensor]],
-        omic_info_list: List[dict],
+        omic_info_list: List[Dict[str, Any]],
         device: torch.device,
     ) -> torch.Tensor:
 
@@ -102,10 +101,10 @@ class OmicsOne(nn.Module):
         protein_ids, protein_map = [], []
 
         for b in range(batch_size):
-            for omic_id, info in zip(omic_ids_list[b], omic_info_list[b]):
+            for info in omic_info_list[b]:
                 omic_type = info["type"]
                 start_pos = info["start"]
-                oid = omic_id.to(device)
+                oid = info["id"]
                 if omic_type in ("dna", "rna"):
                     dna_rna_ids.append(oid)
                     dna_rna_map.append((b, start_pos, len(oid)))
@@ -113,6 +112,7 @@ class OmicsOne(nn.Module):
                     protein_ids.append(oid)
                     protein_map.append((b, start_pos, len(oid)))
                 elif omic_type == "pad":
+                    raise Exception("Deprecated code works, please report the bug.")
                     continue
                 else:
                     raise ValueError(f"Unsupported omic type: {omic_type}")
@@ -139,7 +139,6 @@ class OmicsOne(nn.Module):
         self,
         input_ids: Optional[torch.LongTensor] = None,
         attention_mask: Optional[torch.LongTensor] = None,
-        omic_ids: Optional[List[List[torch.LongTensor]]] = None,
         omic_info_list: Optional[List[List[int]]] = None,
         labels: Optional[torch.LongTensor] = None,
         past_key_values: Optional[List[torch.FloatTensor]] = None,
@@ -162,15 +161,9 @@ class OmicsOne(nn.Module):
 
         # Get token embeddings
         hidden_states = self.model.get_input_embeddings()(input_ids)
-        if omic_ids is not None:
-            # Sanity check
-            for i in range(len(omic_ids)):
-                assert len(omic_ids[i]) == len(
-                    omic_info_list[i]
-                ), f"Mismatch in DNA count vs start_pos count at index {i}"
-
+        if omic_info_list:
             hidden_states = self.process_omic_sequences(
-                hidden_states, omic_ids, omic_info_list, input_ids.device)
+                hidden_states, omic_info_list, input_ids.device)
 
         outputs = self.model(
             inputs_embeds=hidden_states,
@@ -181,6 +174,7 @@ class OmicsOne(nn.Module):
             output_attentions=output_attentions,
             output_hidden_states=output_hidden_states,
             return_dict=return_dict,
+            # skip_logits=False,
         )
         return outputs
 
@@ -189,7 +183,6 @@ class OmicsOne(nn.Module):
         self,
         input_ids: torch.LongTensor,
         attention_mask: Optional[torch.LongTensor] = None,
-        omic_ids: Optional[List[List[torch.LongTensor]]] = None,
         omic_info_list: Optional[List[List[dict]]] = None,
         max_length: Optional[int] = None,
         min_length: Optional[int] = None,
@@ -208,14 +201,9 @@ class OmicsOne(nn.Module):
 
         hidden_states = self.model.get_input_embeddings()(input_ids)
 
-        if omic_ids is not None:
-            for i in range(len(omic_ids)):
-                assert len(omic_ids[i]) == len(
-                    omic_info_list[i]
-                ), f"Mismatch in omic count vs info count at index {i}"
-
+        if omic_info_list:
             hidden_states = self.process_omic_sequences(
-                hidden_states, omic_ids, omic_info_list, input_ids.device)
+                hidden_states, omic_info_list, input_ids.device)
 
         output_ids = self.model.generate(
             inputs_embeds=hidden_states,
