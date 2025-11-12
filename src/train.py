@@ -2,7 +2,7 @@ import logging
 import traceback
 from argparse import ArgumentParser
 import datetime
-
+import numpy as np
 import os
 import deepspeed
 import torch
@@ -167,8 +167,6 @@ def setup_dataset(args, tokenizer, dna_rna_tokenizer, protein_tokenizer):
         dna_rna_tokenizer=dna_rna_tokenizer,
         protein_tokenizer=protein_tokenizer,
         read_nums=args.read_nums,
-        shuffle=True,
-        seed=args.seed,
         type="Train",
         packing=args.packing,
     )
@@ -195,8 +193,6 @@ def setup_dataset(args, tokenizer, dna_rna_tokenizer, protein_tokenizer):
             dna_rna_tokenizer=dna_rna_tokenizer,
             protein_tokenizer=protein_tokenizer,
             read_nums=args.eval_read_nums,
-            shuffle=False,
-            seed=args.seed,
             type="Eval",
             packing=False,
         )
@@ -391,7 +387,7 @@ def main():
         "--mode",
         type=str,
         default="sft",
-        choices=["pretrain", "sft"],
+        choices=["sft"],
         help="Training mode",
     )
     parser.add_argument(
@@ -563,7 +559,7 @@ def main():
     # Setup random seed number
     set_seed(args.seed)
     torch.manual_seed(args.seed)
-    np.random.seed(seed)
+    np.random.seed(args.seed)
 
     # Bind device id and initialize distributed training
     local_rank = int(os.environ["LOCAL_RANK"])

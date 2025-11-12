@@ -182,7 +182,6 @@ class MultiModalInfer:
                 outputs = self.model.generate(
                     input_ids=batch["input_ids"].to(self.device),
                     attention_mask=batch["attention_mask"].to(self.device),
-                    omic_ids=batch["omic_ids"],
                     omic_start_pos_list=batch["omic_start_pos_list"],
                     max_length=args.max_length,
                     temperature=args.temperature,
