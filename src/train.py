@@ -2,7 +2,7 @@ import logging
 import traceback
 from argparse import ArgumentParser
 import datetime
-
+import numpy as np
 import os
 import deepspeed
 import torch
@@ -149,7 +149,6 @@ def setup_dataset(args, tokenizer, dna_rna_tokenizer, protein_tokenizer):
     # 创建数据集配置
     train_config = DatasetConfig(
         max_len=args.max_len,
-        max_src_len=args.max_src_len,
         dna_rna_k_tokens=args.dna_rna_k_tokens,
         protein_k_tokens=args.protein_k_tokens,
         mode=args.mode,
@@ -168,9 +167,8 @@ def setup_dataset(args, tokenizer, dna_rna_tokenizer, protein_tokenizer):
         dna_rna_tokenizer=dna_rna_tokenizer,
         protein_tokenizer=protein_tokenizer,
         read_nums=args.read_nums,
-        shuffle=True,
-        seed=args.seed,
         type="Train",
+        packing=args.packing,
     )
 
     # 创建评估数据集（如果需要）
@@ -180,7 +178,6 @@ def setup_dataset(args, tokenizer, dna_rna_tokenizer, protein_tokenizer):
             f"Loading evaluation dataset from {args.eval_dataset_path}")
         eval_config = DatasetConfig(
             max_len=args.eval_max_len,
-            max_src_len=args.eval_max_src_len,
             mode=args.mode,
             padding=True,
             dna_rna_k_tokens=args.dna_rna_k_tokens,
@@ -196,9 +193,8 @@ def setup_dataset(args, tokenizer, dna_rna_tokenizer, protein_tokenizer):
             dna_rna_tokenizer=dna_rna_tokenizer,
             protein_tokenizer=protein_tokenizer,
             read_nums=args.eval_read_nums,
-            shuffle=False,
-            seed=args.seed,
             type="Eval",
+            packing=False,
         )
 
     return train_dataset, eval_dataset
@@ -391,7 +387,7 @@ def main():
         "--mode",
         type=str,
         default="sft",
-        choices=["pretrain", "sft"],
+        choices=["sft"],
         help="Training mode",
     )
     parser.add_argument(
@@ -554,6 +550,7 @@ def main():
 
     parser.add_argument("--dataloader_pin_memory", action="store_true")
     parser.add_argument("--seed", type=int, default=42, help="The Answer to Life, the Universe, and Everything is 42.")
+    parser.add_argument("--packing", type=bool, default=True, help="Packing pairs into a single sequence.")
 
     # Add DeepSpeed arguments
     parser = deepspeed.add_config_arguments(parser)
@@ -561,6 +558,8 @@ def main():
 
     # Setup random seed number
     set_seed(args.seed)
+    torch.manual_seed(args.seed)
+    np.random.seed(args.seed)
 
     # Bind device id and initialize distributed training
     local_rank = int(os.environ["LOCAL_RANK"])

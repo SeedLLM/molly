@@ -142,7 +142,10 @@ def embed_text_batch(args, text_model, dna_rna_model, protein_model, batch):
     )  # [B, D_text]
 
     # 2. 处理omics数据
-    omic_ids = batch["omic_ids"].to(device, non_blocking=True)  # [B, N_seq, L_proj]
+    omic_ids = torch.LongTensor(batch["omic_info_list"]).to(device, non_blocking=True)  # [B, N_seq, L_proj]
+
+    omic_ids = batch["omic_ids"]
+
     omic_mask = (omic_ids != 1).long().to(device, non_blocking=True)  # 填充token的掩码
     
     # 展平批次和序列维度
