@@ -6,6 +6,7 @@ from typing import Any, Dict, List, Callable
 from collections import defaultdict
 
 import numpy as np
+import bisect
 import pandas as pd
 import torch
 from torch.utils.data import Dataset
@@ -78,6 +79,11 @@ class OmicsDataset(Dataset):
         numbers.sort()  # sort numbers in ascending order for binary search
         knapsacks = []
 
+        def search_for_fit(numbers: list[int], capacity: int) -> int:
+            r"""Find the index of largest number that fits into the knapsack with the given capacity."""
+            index = bisect.bisect(numbers, capacity)
+            return -1 if index == 0 else (index - 1)
+
         while numbers:
             current_knapsack = []
             remaining_capacity = capacity
@@ -143,7 +149,7 @@ class OmicsDataset(Dataset):
         self.mode = dataset_config.mode
         self.padding = dataset_config.padding
         self.dataset_type = type
-        self.packing = False
+        self.packing = packing
 
         # Special tokens
         self._pretokenize_special_tokens()
@@ -178,15 +184,14 @@ class OmicsDataset(Dataset):
         empty_omics_tokenize = lambda _s, _i: []
         batch_input_indices = []
         chunk = 1000
-        for start in tqdm(range(0, len(df), chunk)):
+        for start in tqdm(range(0, len(df), chunk), disable=not is_main_process()):
             end = start + chunk
 
             # 用于根据 length 查询合适的 id
             length2ids: Dict[str, List[int]] = defaultdict(list)
             lengths = []
             for i in range(start, end):
-                raw = df.loc(i)
-                sample = self.format_raw(sample=self.df.loc[idx], text_tokenizer=self.tokenizer, encode_sequence_fn=empty_omics_tokenize)
+                sample = self.format_raw(sample=self.df.loc[i], text_tokenizer=self.tokenizer, encode_sequence_fn=empty_omics_tokenize)
                 input_length = sample['input_ids'].shape[-1]
                 lengths.append(input_length)
                 length2ids[input_length].append(i)
@@ -356,6 +361,7 @@ class OmicsDataset(Dataset):
             omic_start_pos_list = omic_info_list
 
             if self.padding and (pad_len := self.max_len - len(input_ids)) > 0:
+                # padding left
                 input_ids[:0] = [self.pad_id] * pad_len
                 attention_mask[:0] = [0] * pad_len
                 for i, _ in enumerate(omic_start_pos_list):
@@ -363,7 +369,7 @@ class OmicsDataset(Dataset):
             # Convert to tensors
             return {
                 "input_ids": torch.LongTensor(input_ids),
-                "omic_ids": torch.stack(sample["omic_ids_list"]),
+                "omic_ids": torch.stack(omic_ids_list) if omic_ids_list else torch.empty(0, dtype=torch.long),
                 "omic_info_list": omic_start_pos_list,
                 "attention_mask": torch.LongTensor(attention_mask),
                 "task": sample.get("task", ""),
@@ -427,39 +433,47 @@ def qwen_omics_collate_fn(batch):
         pack_input_ids = []
         pack_labels = []
         pack_attention_mask = []
-        pack_postion_ids = []
+        pack_position_ids = []
         pack_omic_ids = []
         pack_omic_info_list = []
 
         offset = 0
         for sample in samples:
-            _input_ids = sample["input_ids"]
-            pack_input_ids += _input_ids
-            pack_postion_ids += list(range(len(_input_ids)))
-            pack_labels += sample["labels"]
+            len_i = len(sample["input_ids"])
+            pack_input_ids   += sample["input_ids"]
+            pack_labels      += sample["labels"]
             pack_attention_mask += sample["attention_mask"]
-            pack_omic_ids += sample.get("omic_ids", None)
-            omic_info_list = sample.get("omic_info_list", [])
+            pack_position_ids += list(range(len_i))
 
-            # 调整 offset
-            for i in range(len(omic_info_list)):
-                omic_info_list[i]['start'] += offset
+            # omic_ids 是 List[Tensor]；先拼到 Python list，最后再 stack
+            pack_omic_ids += sample.get("omic_ids", [])
 
-            pack_omic_info_list += omic_info_list
-            offset += len(_input_ids)
+            # 调整 omic_info 的 start
+            for info in sample.get("omic_info_list", []):
+                pack_omic_info.append({"type": info["type"], "start": info["start"] + offset})
+            offset += len_i
 
-        # Add padding if needed
-        if pad_len := self.max_len - len(input_ids) > 0:
+
+        # 整体截断
+        if len(pack_input_ids) > self.max_len:
+            pack_input_ids   = pack_input_ids[:self.max_len-1] + [self.eos_id]
+            pack_labels      = pack_labels[:self.max_len-1]   + [self.eos_id]
+            pack_attention_mask = pack_attention_mask[:self.max_len]
+            pack_position_ids   = pack_position_ids[:self.max_len]
+
+
+        # pad 到 max_len（trainer 要求固定长度）
+        pad_len = self.max_len - len(pack_input_ids)
+        if pad_len > 0:
             pack_input_ids.extend([self.pad_id] * pad_len)
-            pack_postion_ids.extend([0] * pad_len)
             pack_labels.extend([-100] * pad_len)
-            # more efficient flash_attn 
-            pack_attention_mask.extend([1] * pad_len)
+            pack_attention_mask.extend([0] * pad_len)
+            pack_position_ids.extend([0] * pad_len)
 
         return {
             "input_ids": torch.LongTensor(pack_input_ids),
             "labels": torch.LongTensor(pack_labels),
-            "poistion_ids": torch.LongTensor(pack_postion_ids),
+            "position_ids": torch.LongTensor(pack_position_ids),
             "attention_mask": torch.LongTensor(pack_attention_mask),
             "omic_info_list": pack_omic_info_list,
             "omic_ids": torch.LongTensor(pack_omic_ids),

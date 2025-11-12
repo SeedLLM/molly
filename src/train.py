@@ -562,6 +562,8 @@ def main():
 
     # Setup random seed number
     set_seed(args.seed)
+    torch.manual_seed(args.seed)
+    np.random.seed(seed)
 
     # Bind device id and initialize distributed training
     local_rank = int(os.environ["LOCAL_RANK"])
