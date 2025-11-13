@@ -5,9 +5,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from transformers import AutoModelForCausalLM, AutoModelForMaskedLM, PreTrainedModel, PretrainedConfig
-from transformers.modeling_outputs import CausalLMOutputWithPast
 from utils.tools import time_count
-
+from trainer import CausalLMOutputWithPast
 class OmicsOne(nn.Module):
 
     def __init__(self, config):
@@ -148,6 +147,9 @@ class OmicsOne(nn.Module):
         output_attentions: Optional[bool] = None,
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
+        # 添加参数，即使forward不使用,否则会去除该字段
+        xsource: Optional[torch.LongTensor] = None,
+        task_num: Optional[torch.LongTensor] = None,
         **kwargs,
     ) -> Union[Tuple[torch.Tensor, ...], CausalLMOutputWithPast]:
         return_dict = (return_dict if return_dict is not None else

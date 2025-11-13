@@ -6,6 +6,9 @@ from peft import PeftModel
 from transformers import EarlyStoppingCallback, Trainer, TrainingArguments
 
 from utils.tools import print_rank_0
+from utils.tools import swanlab_log_rank_0
+from torch import nn
+from typing import Any, Union, Optional
 
 
 class OmicsTrainer(Trainer):
@@ -103,3 +106,6 @@ class OmicsTrainer(Trainer):
             print_rank_0(f"Protein projector saved to {protein_projector_path}")
         else:
             super().save_model(output_dir, _internal_call)
+
+
+
