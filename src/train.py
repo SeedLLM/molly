@@ -198,6 +198,7 @@ def setup_dataset(args, tokenizer, dna_rna_tokenizer, protein_tokenizer):
         dna_rna_tokenizer=dna_rna_tokenizer,
         protein_tokenizer=protein_tokenizer,
         read_nums=args.read_nums,
+        compute_domain_losses = args.compute_domain_losses,
         shuffle=True,
         seed=args.seed,
         type="Train",
@@ -680,7 +681,8 @@ def main():
                 train_dataset=train_dataset,
                 eval_dataset=eval_dataset,
                 tokenizer=tokenizer,
-                data_collator=qwen_omics_collate_fn,
+                # data_collator=qwen_omics_collate_fn,
+                data_collator=lambda features: qwen_omics_collate_fn(features, args)
             )
             if args.compute_domain_losses:
                 trainer.training_step = types.MethodType(my_training_step, trainer)

@@ -40,6 +40,7 @@ class OmicsDataset(Dataset):
         dna_rna_tokenizer=None,
         protein_tokenizer=None,
         read_nums=None,
+        compute_domain_losses = False,
         shuffle=False,
         seed=42,
         type=None,
@@ -54,6 +55,7 @@ class OmicsDataset(Dataset):
             dataset_config: Configuration for the dataset.
             dna_rna_tokenizer: Tokenizer for DNA/RNA sequences.
             read_nums: Maximum number of samples to read.
+            compute_domain_losses: Calculate domain losses.
             shuffle: Whether to shuffle the dataset.
             seed: Random seed for shuffling.
             type: Dataset type. "Train / Eval" or "Test"
@@ -66,6 +68,7 @@ class OmicsDataset(Dataset):
         self.tokenizer = tokenizer
         self.dna_rna_tokenizer = dna_rna_tokenizer
         self.protein_tokenizer = protein_tokenizer
+        self.compute_domain_losses = compute_domain_losses
         self.dataset_config = dataset_config
         self.shuffle = shuffle
         self.seed = seed
@@ -318,7 +321,8 @@ class OmicsDataset(Dataset):
                 "raw_input": input_text,
                 "raw_output": output_text,
             }
-        return {
+        elif self.compute_domain_losses:
+            return {
             "input_ids": input_ids,
             "output_ids": output_ids,
             "reasoning_token_ids": reasoning_ids,
@@ -328,6 +332,15 @@ class OmicsDataset(Dataset):
             "label": sample.get("label", ""),
             "xsource": self.convert_source_to_id(sample.get("task")),
             "task_num": sample.get("task_num"),
+        }
+        return {
+            "input_ids": input_ids,
+            "output_ids": output_ids,
+            "reasoning_token_ids": reasoning_ids,
+            "omic_ids_list": omic_ids_list,
+            "omic_info_list": omic_info_list,
+            "task": sample.get("task", ""),
+            "label": sample.get("label", ""),
         }
 
     # pylint: disable=too-many-branches
@@ -405,7 +418,8 @@ class OmicsDataset(Dataset):
             labels.extend([-100] * pad_len)
             attention_mask.extend([0] * pad_len)
 
-        return {
+        if self.compute_domain_losses:
+            return {
             "input_ids": torch.LongTensor(input_ids),
             "omic_ids": torch.stack(sample["omic_ids_list"]),
             "omic_info_list": sample["omic_info_list"],
@@ -414,6 +428,14 @@ class OmicsDataset(Dataset):
             "cal_metric_pos": cal_metric_pos,
             "xsource": torch.tensor(sample.get("xsource")),
             "task_num": torch.tensor(sample.get("task_num"))
+        }
+        return {
+            "input_ids": torch.LongTensor(input_ids),
+            "omic_ids": torch.stack(sample["omic_ids_list"]),
+            "omic_info_list": sample["omic_info_list"],
+            "labels": torch.LongTensor(labels),
+            "attention_mask": torch.LongTensor(attention_mask),
+            "cal_metric_pos": cal_metric_pos,
         }
 
     def _encode_sequence(self, seq: str, seq_type: str) -> torch.LongTensor:
@@ -446,7 +468,8 @@ class OmicsDataset(Dataset):
         return encoding["input_ids"].squeeze(0)
 
 
-def qwen_omics_collate_fn(batch):
+# def qwen_omics_collate_fn(batch):
+def qwen_omics_collate_fn(batch, args):
     """
     Collate function for DataLoader with multimodal DNA batches.
     Handles variable length DNA sequences and attention masks.
@@ -457,15 +480,13 @@ def qwen_omics_collate_fn(batch):
     Returns:
         Batched tensors suitable for model input
     """
-
     input_ids = [sample["input_ids"] for sample in batch]
     labels = [sample["labels"] for sample in batch]
     attention_mask = [sample["attention_mask"] for sample in batch]
     cal_metric_pos = [sample.get("cal_metric_pos") for sample in batch]
     omic_info_lists = [sample.get("omic_info_list", []) for sample in batch]
     omic_ids = [sample.get("omic_ids", None) for sample in batch]
-    xsource = [sample.get("xsource") for sample in batch]
-    task_num = [sample.get("task_num") for sample in batch]
+    
 
     input_ids = torch.nn.utils.rnn.pad_sequence(input_ids,
                                                 batch_first=True,
@@ -478,11 +499,6 @@ def qwen_omics_collate_fn(batch):
                                                      padding_value=0)
     omic_ids = (torch.nn.utils.rnn.pad_sequence(
         omic_ids, batch_first=True, padding_value=1) if omic_ids else None)
-    # xsource = torch.tensor(xsource, dtype=torch.long)
-    # task_num = torch.tensor(task_num, dtype=torch.long)
-    # 从 [tensor(0), tensor(1), tensor(2)] -> tensor([0, 1, 2])
-    xsource = torch.stack(xsource)
-    task_num = torch.stack(task_num)
 
 
     # Pad omic_info_lists to the same length as omic_ids
@@ -493,6 +509,21 @@ def qwen_omics_collate_fn(batch):
                 "start": -1
             }] * (omic_ids.shape[1] - len(omic_info_lists[i])))
 
+    if args.compute_domain_losses:
+        xsource = [sample.get("xsource") for sample in batch]
+        task_num = [sample.get("task_num") for sample in batch]
+        xsource = torch.stack(xsource)
+        task_num = torch.stack(task_num)
+        return {
+            "input_ids": input_ids,
+            "labels": labels,
+            "attention_mask": attention_mask,
+            "omic_ids": omic_ids,
+            "omic_info_list": omic_info_lists,
+            "cal_metric_pos": cal_metric_pos,
+            "xsource": xsource,
+            "task_num": task_num,
+        }
     return {
         "input_ids": input_ids,
         "labels": labels,
@@ -500,8 +531,6 @@ def qwen_omics_collate_fn(batch):
         "omic_ids": omic_ids,
         "omic_info_list": omic_info_lists,
         "cal_metric_pos": cal_metric_pos,
-        "xsource": xsource,
-        "task_num": task_num,
     }
 
 
