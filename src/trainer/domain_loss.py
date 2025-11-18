@@ -653,19 +653,19 @@ def my_training_step(
                     2: "CRISPROnTarget",
                     3: "emp-H",
                     4: "enhancer_activity",
-                    5: "Fluorescence",
-                    6: "FunctionEC",
-                    7: "Isoform",
-                    8: "MeanRibosomeLoading",
-                    9: "Modification",
-                    10: "NoncodingRNAFamily",
+                    5: "Fluorescence-Fluorescence",
+                    6: "FunctionEC-FunctionEC",
+                    7: "Isoform-Isoform",
+                    8: "MeanRibosomeLoading-MeanRibosomeLoading",
+                    9: "Modification-Modification",
+                    10: "NoncodingRNAFamily-NoncodingRNAFamily",
                     11: "pd-prom_300",
-                    12: "ProgrammableRNASwitches",
+                    12: "ProgrammableRNASwitches-ProgrammableRNASwitches",
                     13: "promoter_enhancer_interaction",
                     14: "rna_protein_interaction",
-                    15: "Solubility",
-                    16: "Stability",
-                    17: "Thermostability",
+                    15: "Solubility-Solubility",
+                    16: "Stability-Stability",
+                    17: "Thermostability-Thermostability",
                     18: "tf-h",
                     19: "tf-m",
                     100: "Other"
@@ -684,8 +684,8 @@ def my_training_step(
                 else:
                     ret[key] = v
             return ret, log_all
-        domain_loss_dict,log_all = build_domain_loss_dict(outputs.domain_losses, inputs['xsource'])
-        # domain_loss_list = build_domain_loss_dict(outputs.domain_losses, inputs['xsource'])
+        domain_loss_dict,log_all = build_domain_loss_dict(outputs.domain_losses, inputs['task_label'])
+        # domain_loss_list = build_domain_loss_dict(outputs.domain_losses, inputs['task_label'])
         # import pdb
         # pdb.set_trace()
         for log,num in zip(log_all, task_num):

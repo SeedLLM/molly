@@ -148,7 +148,7 @@ class OmicsOne(nn.Module):
         output_hidden_states: Optional[bool] = None,
         return_dict: Optional[bool] = None,
         # 添加参数，即使forward不使用,否则会去除该字段
-        xsource: Optional[torch.LongTensor] = None,
+        task_label: Optional[torch.LongTensor] = None,
         task_num: Optional[torch.LongTensor] = None,
         **kwargs,
     ) -> Union[Tuple[torch.Tensor, ...], CausalLMOutputWithPast]:

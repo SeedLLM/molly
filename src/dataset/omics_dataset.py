@@ -330,7 +330,7 @@ class OmicsDataset(Dataset):
             "omic_info_list": omic_info_list,
             "task": sample.get("task", ""),
             "label": sample.get("label", ""),
-            "xsource": self.convert_source_to_id(sample.get("task")),
+            "task_label": self.convert_source_to_id(sample.get("task")),
             "task_num": sample.get("task_num"),
         }
         return {
@@ -426,7 +426,7 @@ class OmicsDataset(Dataset):
             "labels": torch.LongTensor(labels),
             "attention_mask": torch.LongTensor(attention_mask),
             "cal_metric_pos": cal_metric_pos,
-            "xsource": torch.tensor(sample.get("xsource")),
+            "task_label": torch.tensor(sample.get("task_label")),
             "task_num": torch.tensor(sample.get("task_num"))
         }
         return {
@@ -510,9 +510,9 @@ def qwen_omics_collate_fn(batch, args):
             }] * (omic_ids.shape[1] - len(omic_info_lists[i])))
 
     if args.compute_domain_losses:
-        xsource = [sample.get("xsource") for sample in batch]
+        task_label = [sample.get("task_label") for sample in batch]
         task_num = [sample.get("task_num") for sample in batch]
-        xsource = torch.stack(xsource)
+        task_label = torch.stack(task_label)
         task_num = torch.stack(task_num)
         return {
             "input_ids": input_ids,
@@ -521,7 +521,7 @@ def qwen_omics_collate_fn(batch, args):
             "omic_ids": omic_ids,
             "omic_info_list": omic_info_lists,
             "cal_metric_pos": cal_metric_pos,
-            "xsource": xsource,
+            "task_label": task_label,
             "task_num": task_num,
         }
     return {

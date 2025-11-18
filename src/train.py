@@ -37,6 +37,7 @@ from utils import (
 
 import transformers
 import torch
+from colorama import Fore, Style
 
 def check_versions():
     """检查关键库的版本"""
@@ -50,19 +51,13 @@ def check_versions():
         'torch': torch.__version__
     }
     
-    # ANSI颜色代码
-    YELLOW = '\033[93m'
-    RESET = '\033[0m'
-    
     print("=== 版本检查 ===")
     for lib, current in current_versions.items():
         required = required_versions.get(lib, 'unknown')
-        # 用黄色显示required版本
-        print(f"{lib}: {current} (required: {YELLOW}{required}{RESET})")
+        print(f"{lib}: {current} (required: {Fore.YELLOW}{required}{Style.RESET_ALL})")
     
-    # 可以添加警告但不阻止执行
     if transformers.__version__ != required_versions['transformers']:
-        print(f"{YELLOW}⚠️  警告: transformers 版本 {transformers.__version__} 可能与补丁不兼容{RESET}")
+        print(f"{Fore.YELLOW}⚠️  警告: transformers 版本 {transformers.__version__} 可能与补丁不兼容{Style.RESET_ALL}")
 
 
 def setup_tokenizers(args):
