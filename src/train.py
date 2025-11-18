@@ -676,8 +676,7 @@ def main():
                 train_dataset=train_dataset,
                 eval_dataset=eval_dataset,
                 tokenizer=tokenizer,
-                # data_collator=qwen_omics_collate_fn,
-                data_collator=lambda features: qwen_omics_collate_fn(features, args)
+                data_collator=qwen_omics_collate_fn,
             )
             if args.compute_domain_losses:
                 trainer.training_step = types.MethodType(my_training_step, trainer)
