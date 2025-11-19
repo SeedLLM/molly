@@ -71,6 +71,8 @@ python molly/data_tools/convert.py
 cd molly/eval
 .eval.sh
 ```
+* molly/eval/eval_old.py 不支持子任务结果测评
+* molly/eval/eval_new.py 支持对例如TF-M-0，TF-M-1的子任务结果的测评（优先使用）
 
 ## :pushpin: LICENSE
 
