@@ -61,6 +61,17 @@ Omics-Specific Models（OSMs）指代各自组学赛道中性能领先的专用�
     ./scripts/train/run_train_mini.sh
     ```
 
+## Eval
+* 将推理数据转换为待测评的格式
+```
+python molly/data_tools/convert.py
+````
+* 使用测评脚本获得模型在各个任务上的性能
+```
+cd molly/eval
+.eval.sh
+```
+
 ## :pushpin: LICENSE
 
 This project follows [apache license](./LICENSE).
