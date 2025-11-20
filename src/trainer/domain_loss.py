@@ -1106,7 +1106,7 @@ def my_lce_forward(
         # By default, if in training mode, don't materialize logits
         skip_logits = self.training and (labels is not None or shift_labels is not None)
 
-    # LigerForCausalLMLoss 的底层算子 liger_fused_linear_cross_entropy 只接受 (hidden_states, lm_head_weight, labels, ...) 等固定位置参数,不接受return_dict=True
+    # LigerForCausalLMLoss 的底层算子F.liger_fused_linear_cross_entropy不接受参数return_dict=True
     kwargs.pop('return_dict', None)
     if skip_logits:
         loss = LigerForCausalLMLoss(
