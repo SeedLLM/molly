@@ -18,6 +18,7 @@ from transformers import (
 )
 from transformers import Qwen3ForCausalLM
 import types
+import time
 
 # pylint: disable=no-name-in-module
 # pylint: disable=too-many-branches
@@ -34,6 +35,8 @@ from utils import (
     set_up_trainable_param,
     time_count,
     get_current_device,
+    pretty_print_args,
+    is_main_process,
 )
 from loss import dem_loss, entropy_loss
 
@@ -128,7 +131,10 @@ def setup_model_and_optimizer(args, tokenizer):
         with time_count("Loaded llm model"):
             if args.use_liger:
                 from liger_kernel.transformers import apply_liger_kernel_to_qwen3
-                apply_liger_kernel_to_qwen3(cross_entropy= not args.use_dem_sft)
+                if args.use_dem_sft:
+                    apply_liger_kernel_to_qwen3(cross_entropy=False, fused_linear_cross_entropy=False)
+                else:
+                    apply_liger_kernel_to_qwen3()
             else:
                 print('Liger Kernel disabled, see https://github.com/linkedin/Liger-Kernel for better performance')
 
@@ -230,6 +236,21 @@ def setup_dataset(args, tokenizer, dna_rna_tokenizer, protein_tokenizer):
 
     return train_dataset, eval_dataset
 
+import argparse
+
+def str2bool(v):
+    """
+    把字符串转成布尔值，用于 argparse 的 type= 参数。
+    支持 true/false, yes/no, 1/0, y/n, t/f 及其大小写组合。
+    """
+    if isinstance(v, bool):          # 如果已经是 bool，直接返回
+        return v
+    if v.lower() in {"true", "t", "1", "yes", "y"}:
+        return True
+    elif v.lower() in {"false", "f", "0", "no", "n"}:
+        return False
+    else:
+        raise argparse.ArgumentTypeError("Boolean value expected.")
 
 def main():
     parser = ArgumentParser()
@@ -580,17 +601,19 @@ def main():
                         help="FlashAttn Implementation, support sdpa, flash_attention_2 or flash_attention_3")
     
     parser.add_argument("--use_liger",
+                        type=str2bool,
                         default=False,
                         help="Whether to use liger for optimizer state offload, see https://github.com/linkedin/Liger-Kernel")
 
     parser.add_argument("--dataloader_pin_memory", action="store_true")
     parser.add_argument("--seed", type=int, default=42, help="The Answer to Life, the Universe, and Everything is 42.")
-    parser.add_argument("--packing", type=bool, default=True, help="Packing pairs into a single sequence.")
-    parser.add_argument("--use_dem_sft", type=bool, default=True, help="Use DEM (Dynamic Entropy Mining) loss")
+    parser.add_argument("--packing", type=str2bool, default=True, help="Packing pairs into a single sequence.")
+    parser.add_argument("--use_dem_sft", type=str2bool, default=True, help="Use DEM (Dynamic Entropy Mining) loss")
 
     # Add DeepSpeed arguments
     parser = deepspeed.add_config_arguments(parser)
     args = parser.parse_args()
+
     if args.compute_domain_losses:
         check_versions()
 
@@ -620,10 +643,16 @@ def main():
     else:
         args.gpu_count = 1
 
+    if is_main_process():
+        pretty_print_args(args)
+        time.sleep(5)
+    dist.barrier()
+
     # Add clip_grad_max_norm if not present
     if not hasattr(args, "clip_grad_max_norm"):
         args.clip_grad_max_norm = 1.0
     writer = None
+
     try:
 
         # Set global_rank to current process rank
