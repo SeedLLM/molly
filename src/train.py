@@ -185,19 +185,19 @@ def setup_dataset(args, tokenizer, dna_rna_tokenizer, protein_tokenizer):
     )
 
     # 创建训练数据集
-    print_rank_0(f"Loading training dataset from {args.train_dataset_path}")
-
-    train_dataset = OmicsDataset(
-        parquet_file=args.train_dataset_path,
-        tokenizer=tokenizer,
-        dataset_config=train_config,
-        dna_rna_tokenizer=dna_rna_tokenizer,
-        protein_tokenizer=protein_tokenizer,
-        read_nums=args.read_nums,
-        compute_domain_losses = args.compute_domain_losses,
-        type="Train",
-        packing=args.packing,
-    )
+    training_args = TrainingArguments()
+    with training_args.main_process_first(desc=f"Loading training dataset from {args.train_dataset_path}", local=True):
+        train_dataset = OmicsDataset(
+            parquet_file=args.train_dataset_path,
+            tokenizer=tokenizer,
+            dataset_config=train_config,
+            dna_rna_tokenizer=dna_rna_tokenizer,
+            protein_tokenizer=protein_tokenizer,
+            read_nums=args.read_nums,
+            compute_domain_losses = args.compute_domain_losses,
+            type="Train",
+            packing=args.packing,
+        )
 
     # 创建评估数据集（如果需要）
     eval_dataset = None
@@ -224,6 +224,9 @@ def setup_dataset(args, tokenizer, dna_rna_tokenizer, protein_tokenizer):
             type="Eval",
             packing=False,
         )
+
+    # 同步
+    dist.barrier()
 
     return train_dataset, eval_dataset
 

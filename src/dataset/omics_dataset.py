@@ -203,7 +203,7 @@ class OmicsDataset(Dataset):
 
         # Load data
         print(f"Loading parquet data from {parquet_file}")
-        df = pd.read_parquet(parquet_file)
+        df = pd.read_parquet(parquet_file, engine='pyarrow', use_threads=True, memory_map=True)
 
         # Limit samples if specified
         if read_nums:
@@ -220,9 +220,16 @@ class OmicsDataset(Dataset):
 
     def pack_input_ids(self, df: pd.core.frame.DataFrame, max_token_length: int) -> List[List[int]]:
         """Return a list of packed index"""
-        empty_omics_tokenize = lambda _s, _i: []
+
+        # 如果有缓存，直接加载
+        cache_file = '.cache/indices.pt'
+        if not is_main_process() and os.path.exists(cache_file):
+            print(f'Load cache data from {cache_file}')
+            return torch.load(cache_file)
+
         batch_input_indices = []
         chunk = 1000
+
         for start in tqdm(range(0, len(df), chunk), disable=not is_main_process()):
             end = start + min(chunk, len(df) - start)
 
@@ -230,7 +237,7 @@ class OmicsDataset(Dataset):
             length2ids: Dict[str, List[int]] = defaultdict(list)
             lengths = []
             for i in range(start, end):
-                sample = self.format_raw(sample=df.loc[i], text_tokenizer=self.tokenizer, encode_sequence_fn=empty_omics_tokenize)
+                sample = self.format_raw(sample=df.loc[i], text_tokenizer=self.tokenizer, encode_sequence_fn=lambda _s, _i: [])
                 input_length = len(sample['input_ids'])
                 lengths.append(input_length)
                 length2ids[input_length].append(i)
@@ -242,6 +249,12 @@ class OmicsDataset(Dataset):
             for knapsack in knapsacks:
                 indexes = [length2ids[length].pop() for length in knapsack]
                 batch_input_indices.append(indexes)
+
+        # caching
+        if is_main_process():
+            print(f'Dump cache data to {cache_file}')
+            os.makedirs(os.path.dirname(cache_file), exist_ok=True)
+            torch.save(batch_input_indices, cache_file)
         return batch_input_indices
 
     def __len__(self) -> int:
