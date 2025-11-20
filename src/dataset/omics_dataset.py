@@ -169,6 +169,50 @@ class OmicsDataset(Dataset):
                 r"<protein>\s*([ACDEFGHIKLMNPQRSTVWYBXZOU]+)\s*</protein>"),
         }
 
+    def convert_source_to_id(self, source:str):
+        if 'antibody_antigen' in source:
+            return 0
+        elif 'cpd-prom_core' in source:
+            return 1
+        elif 'CRISPROnTarget' in source:
+            return 2
+        elif 'emp-H' in source:
+            return 3
+        elif 'enhancer_activity' in source:
+            return 4
+        elif 'Fluorescence-Fluorescence' in source:
+            return 5
+        elif 'FunctionEC-FunctionEC' in source:
+            return 6
+        elif 'Isoform-Isoform' in source:
+            return 7
+        elif 'MeanRibosomeLoading-MeanRibosomeLoading' in source:
+            return 8
+        elif 'Modification-Modification' in source:
+            return 9
+        elif 'NoncodingRNAFamily-NoncodingRNAFamily' in source:
+            return 10
+        elif 'pd-prom_300' in source:
+            return 11
+        elif 'ProgrammableRNASwitches-ProgrammableRNASwitches' in source:
+            return 12
+        elif 'promoter_enhancer_interaction' in source:
+            return 13
+        elif 'rna_protein_interaction' in source:
+            return 14
+        elif 'Solubility-Solubility' in source:
+            return 15
+        elif 'Stability-Stability' in source:
+            return 16
+        elif 'Thermostability-Thermostability' in source:
+            return 17
+        elif 'tf-h' in source:
+            return 18
+        elif 'tf-m' in source:
+            return 19
+        else:
+            return 100
+
     def format_raw(self, sample: pd.core.series.Series, tokenizer) -> dict:
         """
         Format a Parquet example into DNA-LLM format suitable for processing.
@@ -274,15 +318,18 @@ class OmicsDataset(Dataset):
                 "raw_input": input_text,
                 "raw_output": output_text,
             }
+
         return {
-            "input_ids": input_ids,
-            "output_ids": output_ids,
-            "reasoning_token_ids": reasoning_ids,
-            "omic_ids_list": omic_ids_list,
-            "omic_info_list": omic_info_list,
-            "task": sample.get("task", ""),
-            "label": sample.get("label", ""),
-        }
+        "input_ids": input_ids,
+        "output_ids": output_ids,
+        "reasoning_token_ids": reasoning_ids,
+        "omic_ids_list": omic_ids_list,
+        "omic_info_list": omic_info_list,
+        "task": sample.get("task", ""),
+        "label": sample.get("label", ""),
+        "task_label": self.convert_source_to_id(sample.get("task")),
+        "task_num": sample.get("task_num"),
+    }
 
     # pylint: disable=too-many-branches
     def process_sample(self, sample: Dict[str,
@@ -360,13 +407,15 @@ class OmicsDataset(Dataset):
             attention_mask.extend([0] * pad_len)
 
         return {
-            "input_ids": torch.LongTensor(input_ids),
-            "omic_ids": torch.stack(sample["omic_ids_list"]),
-            "omic_info_list": sample["omic_info_list"],
-            "labels": torch.LongTensor(labels),
-            "attention_mask": torch.LongTensor(attention_mask),
-            "cal_metric_pos": cal_metric_pos,
-        }
+        "input_ids": torch.LongTensor(input_ids),
+        "omic_ids": torch.stack(sample["omic_ids_list"]),
+        "omic_info_list": sample["omic_info_list"],
+        "labels": torch.LongTensor(labels),
+        "attention_mask": torch.LongTensor(attention_mask),
+        "cal_metric_pos": cal_metric_pos,
+        "task_label": torch.tensor(sample.get("task_label")),
+        "task_num": torch.tensor(sample.get("task_num"))
+    }
 
     def _encode_sequence(self, seq: str, seq_type: str) -> torch.LongTensor:
         """
@@ -398,6 +447,7 @@ class OmicsDataset(Dataset):
         return encoding["input_ids"].squeeze(0)
 
 
+# def qwen_omics_collate_fn(batch):
 def qwen_omics_collate_fn(batch):
     """
     Collate function for DataLoader with multimodal DNA batches.
@@ -409,13 +459,14 @@ def qwen_omics_collate_fn(batch):
     Returns:
         Batched tensors suitable for model input
     """
-
     input_ids = [sample["input_ids"] for sample in batch]
     labels = [sample["labels"] for sample in batch]
     attention_mask = [sample["attention_mask"] for sample in batch]
     cal_metric_pos = [sample.get("cal_metric_pos") for sample in batch]
     omic_info_lists = [sample.get("omic_info_list", []) for sample in batch]
     omic_ids = [sample.get("omic_ids", None) for sample in batch]
+    task_label = [sample.get("task_label") for sample in batch]
+    task_num = [sample.get("task_num") for sample in batch]
 
     input_ids = torch.nn.utils.rnn.pad_sequence(input_ids,
                                                 batch_first=True,
@@ -428,6 +479,9 @@ def qwen_omics_collate_fn(batch):
                                                      padding_value=0)
     omic_ids = (torch.nn.utils.rnn.pad_sequence(
         omic_ids, batch_first=True, padding_value=1) if omic_ids else None)
+    task_label = torch.stack(task_label)
+    task_num = torch.stack(task_num)
+
 
     # Pad omic_info_lists to the same length as omic_ids
     for i, _ in enumerate(omic_info_lists):
@@ -444,6 +498,8 @@ def qwen_omics_collate_fn(batch):
         "omic_ids": omic_ids,
         "omic_info_list": omic_info_lists,
         "cal_metric_pos": cal_metric_pos,
+        "task_label": task_label,
+        "task_num": task_num,
     }
 
 

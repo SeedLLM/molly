@@ -28,3 +28,4 @@ packaging
 ninja
 swanlab[dashboard]
 liger-kernel
+colorama

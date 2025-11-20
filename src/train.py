@@ -15,7 +15,8 @@ from transformers import (
     set_seed,
     TrainingArguments
 )
-
+from transformers import Qwen3ForCausalLM
+import types
 
 # pylint: disable=no-name-in-module
 # pylint: disable=too-many-branches
@@ -24,7 +25,7 @@ from dataset.omics_dataset import DatasetConfig, OmicsDataset, qwen_omics_collat
 
 from torch.utils.data.distributed import DistributedSampler
 from model import OmicsOne, get_omics_one_config
-from trainer import OmicsTrainer
+from trainer import OmicsTrainer, CausalLMOutputWithPast, my_inner_training_loop, my_maybe_log_save_evaluate, my_training_step, my_lce_forward
 from utils import (
     init_swanlab_rank_0,
     pre_train_lora,
@@ -33,6 +34,31 @@ from utils import (
     time_count,
     get_current_device,
 )
+
+import transformers
+import torch
+from colorama import Fore, Style
+
+def check_versions():
+    """检查关键库的版本"""
+    required_versions = {
+        'transformers': '4.53.0',
+        'torch': '2.7.0+cu128'
+    }
+    
+    current_versions = {
+        'transformers': transformers.__version__,
+        'torch': torch.__version__
+    }
+    
+    print("=== 版本检查 ===")
+    for lib, current in current_versions.items():
+        required = required_versions.get(lib, 'unknown')
+        print(f"{lib}: {current} (required: {Fore.YELLOW}{required}{Style.RESET_ALL})")
+    
+    if transformers.__version__ != required_versions['transformers']:
+        print(f"{Fore.YELLOW}⚠️  警告: transformers 版本 {transformers.__version__} 可能与补丁不兼容{Style.RESET_ALL}")
+
 
 def setup_tokenizers(args):
     """
@@ -60,7 +86,6 @@ def setup_tokenizers(args):
                                                       trust_remote_code=True)
 
     return tokenizer, dna_rna_tokenizer, protein_tokenizer
-
 
 def setup_model_and_optimizer(args, tokenizer):
     print_rank_0("-------------------init model-------------------------")
@@ -168,6 +193,7 @@ def setup_dataset(args, tokenizer, dna_rna_tokenizer, protein_tokenizer):
         dna_rna_tokenizer=dna_rna_tokenizer,
         protein_tokenizer=protein_tokenizer,
         read_nums=args.read_nums,
+        compute_domain_losses = args.compute_domain_losses,
         shuffle=True,
         seed=args.seed,
         type="Train",
@@ -469,6 +495,10 @@ def main():
                         type=bool,
                         default=True,
                         help="If train llm")
+    parser.add_argument("--compute-domain-losses",
+                        type=bool,
+                        default=False,
+                        help="compute domain losses during training")
 
     # Optimizer configuration
     parser.add_argument("--learning_rate",
@@ -558,6 +588,8 @@ def main():
     # Add DeepSpeed arguments
     parser = deepspeed.add_config_arguments(parser)
     args = parser.parse_args()
+    if args.compute_domain_losses:
+        check_versions()
 
     # Setup random seed number
     set_seed(args.seed)
@@ -646,6 +678,11 @@ def main():
                 tokenizer=tokenizer,
                 data_collator=qwen_omics_collate_fn,
             )
+            if args.compute_domain_losses:
+                trainer.training_step = types.MethodType(my_training_step, trainer)
+                trainer._maybe_log_save_evaluate = types.MethodType(my_maybe_log_save_evaluate, trainer)
+                trainer._inner_training_loop = types.MethodType(my_inner_training_loop, trainer)
+                Qwen3ForCausalLM.forward = my_lce_forward
             # Start training
             trainer.train()
         except Exception as e:
