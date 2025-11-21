@@ -1,0 +1,146 @@
+{
+    "emp": {
+        "type": "binary classification",
+        "hint": "Return yes or no.",
+        "omics": "DNA",
+        "metrics": "MCC"
+    },
+    "pd": {
+        "type": "binary classification",
+        "hint": "Return yes or no.",
+        "omics": "DNA",
+        "metrics": "MCC"
+    },
+    "cpd": {
+        "type": "binary classification",
+        "hint": "Return yes or no.",
+        "omics": "DNA",
+        "metrics": "MCC"
+    },
+    "promoter_enhancer_interaction": {
+        "type": "binary classification",
+        "hint": "Return yes or no.",
+        "omics": "Multi",
+        "metrics": "MCC"
+    },
+    "rna_protein_interaction": {
+        "type": "binary classification",
+        "hint": "Return yes or no.",
+        "omics": "Multi",
+        "metrics": "MCC"
+    },
+    "antibody_antigen": {
+        "type": "binary classification",
+        "hint": "Return yes or no.",
+        "omics": "Multi",
+        "metrics": "MCC"
+    },
+    "tf_h": {
+        "type": "binary classification",
+        "hint": "Return yes or no.",
+        "omics": "DNA",
+        "metrics": "MCC"
+    },
+    "tf_m": {
+        "type": "binary classification",
+        "hint": "Return yes or no.",
+        "omics": "DNA",
+        "metrics": "MCC"
+    },
+    "tf": {
+	"type": "binary classification",
+        "hint": "Return yes or no.",
+        "omics": "DNA",
+        "metrics": "MCC"
+    },
+    "enhancer_activity": {
+        "type": "multilabel regression",
+        "hint": "Return two numeric values with two decimal places for the regression values of 'Housekeeping enhancer activity' and 'Developmental enhancer activity'.",
+        "omics": "DNA",
+        "metrics": "PCC"
+    },
+    "Fluorescence": {
+        "type": "regression",
+        "hint": "Return one numeric value with two decimals.",
+        "omics": "Protein",
+        "metrics": "spearman"
+    },
+    "FunctionEC": {
+        "type": "multilabel classification",
+        "hint": "Return a string including one or more Enzyme Commission numbers, each composed of four numbers separated by periods. For example, 2.7.11.12",
+        "omics": "Protein",
+        "metrics": "Fmax"
+    }, 
+    "Solubility": {
+        "type": "binary classification",
+        "hint": "Return yes or no.",
+        "omics": "Protein",
+        "metrics": "Acc"
+    },
+    "Stability": {
+        "type": "regression",
+        "hint": "Return one numeric value with two decimals.",
+        "omics": "Protein",
+        "metrics": "spearman"
+    },
+    "Thermostability": {
+        "type": "regression",
+        "hint": "Return one numeric value with two decimals.",
+        "omics": "Protein",
+        "metrics": "spearman"
+    },
+    "Isoform": {
+        "type": "regression",
+        "hint": "Return one numeric value in two decimals.",
+        "omics": "RNA",
+        "metrics": "R2"
+    },
+    "NoncodingRNAFamily": {
+        "type": "multiclass classification",
+        "hint": "Return one of the 13 RNA class names: '5S_rRNA', '5_8S_rRNA', 'tRNA', 'ribozyme', 'CD-box', 'miRNA', 'Intron_gpI', 'Intron_gpII', 'HACA-box', 'riboswitch', 'IRES', 'leader', or 'scaRNA'. For example: riboswitch.",
+        "omics": "RNA",
+        "metrics": "Acc"
+    },
+    "Modification": {
+        "type": "multilabel classification",
+        "hint": "Return one, or more RNA modification names from the following list: ['Am', 'Cm', 'Gm', 'Um', 'm1A', 'm5C', 'm5U', 'm6A', 'm6Am', 'm7G', 'Psi', 'AtoI']. Return 'none' if not in the list.",
+        "omics": "RNA",
+        "metrics": "AUC"
+    },
+    "MeanRibosomeLoading": {
+        "type": "regression",
+        "hint": "Return a numeric value in two decimals.",
+        "omics": "RNA",
+        "metrics": "R2"
+    },
+    "ProgrammableRNASwitches": {
+        "type": "multilabel regression",
+        "hint": "Return three numeric values with two decimal places for the regression values of 'ON', 'OFF', and 'ON/OFF'.",
+        "omics": "RNA",
+        "metrics": "R2"
+    },
+    "CRISPROnTarget": {
+        "type": "regression",
+        "hint": "Return a numeric value in two decimals.",
+        "omics": "RNA",
+        "metrics": "spearman"
+    },
+    "sirnaEfficiency": {
+        "type": "regression",
+        "hint": "Return a numeric value in two decimals.",
+        "omics": "Multi",
+        "metrics": "mixed_score"
+    },
+    "AntibodyAntigen": {
+        "type": "binary classification",
+        "hint": "Return yes or no.",
+        "omics": "Multi",
+        "metrics": "MCC"
+    },
+    "ncRNAProteinInter":{
+        "type": "binary classification",
+        "hint": "Return yes or no.",
+        "omics": "Multi",
+        "metrics": "MCC"
+    }
+}
