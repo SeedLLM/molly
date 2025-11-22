@@ -238,7 +238,6 @@ class MultiModalInfer:
 
             test_config = DatasetConfig(
                 max_len=self.args.max_length,
-                max_src_len=self.args.max_length,
                 mode="sft",
                 padding=True,
                 input_field="input",
@@ -255,6 +254,7 @@ class MultiModalInfer:
                 protein_tokenizer=self.protein_tokenizer,
                 num_workers=4,
                 type="Test",
+                packing=False,
             )
 
             test_dataloader = torch.utils.data.DataLoader(
@@ -270,7 +270,6 @@ class MultiModalInfer:
                     outputs = self.model.generate(
                         input_ids=batch["input_ids"].to(self.device),
                         attention_mask=batch["attention_mask"].to(self.device),
-                        omic_ids=batch["omic_ids"],
                         omic_info_list=batch["omic_info_list"],
                         do_sample=True,
                         max_length=self.args.max_length,
