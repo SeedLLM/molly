@@ -26,6 +26,7 @@ class OmicsTrainer(Trainer):
         compute_metrics=None,
         optimizers=(None, None),
         preprocess_logits_for_metrics=None,
+        compute_loss_func=None,
         **kwargs,
     ):
         """
@@ -42,6 +43,7 @@ class OmicsTrainer(Trainer):
             compute_metrics: 计算评估指标的函数
             optimizers: 优化器和调度器元组
             preprocess_logits_for_metrics: 预处理logits的函数
+            compute_loss_func: 自定义 loss function
         """
 
         # 保存tokenizer作为属性以保持向后兼容
@@ -78,6 +80,7 @@ class OmicsTrainer(Trainer):
             ],
             optimizers=optimizers,
             preprocess_logits_for_metrics=preprocess_logits_for_metrics,
+            compute_loss_func=compute_loss_func,
             **kwargs,
         )
         self.args = args
