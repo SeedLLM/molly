@@ -410,9 +410,9 @@ class OmicsDataset(Dataset):
                     omic_start_pos_list[i]["start"] += pad_len
             # Convert to tensors
             return {
-                "input_ids": torch.LongTensor(input_ids),
+                "input_ids": input_ids,
                 "omic_info_list": omic_start_pos_list,
-                "attention_mask": torch.LongTensor(attention_mask),
+                "attention_mask": attention_mask,
                 "task": task_name,
                 "raw_label": sample.get("label", ""),
                 "raw_input": input_text,
@@ -579,15 +579,19 @@ def qwen_omics_collate_fn_inference(batch):
         Batched tensors suitable for model input
     """
 
-    input_ids = [sample["input_ids"] for sample in batch]
-    attention_mask = [sample["attention_mask"] for sample in batch]
-    omic_info_lists = [sample.get("omic_info_list", []) for sample in batch]
+    ## unsqueeze item
+    for index, datapack in enumerate(batch):
+        if type(datapack) is list and len(datapack) == 1:
+            batch[index] = datapack[0]
+    
+    input_ids = torch.LongTensor([sample["input_ids"] for sample in batch])
+    attention_mask = torch.LongTensor([sample["attention_mask"] for sample in batch])
+    omic_info_list = [sample.get("omic_info_list", []) for sample in batch]
 
     raw_input = [sample.get("raw_input") for sample in batch]
     raw_output = [sample.get("raw_output") for sample in batch]
     raw_label = [sample.get("raw_label") for sample in batch]
     raw_task = [sample.get("task") for sample in batch]
-    raw_kind = [sample.get("kind") for sample in batch]
 
     input_ids = torch.nn.utils.rnn.pad_sequence(input_ids,
                                                 batch_first=True,
@@ -598,10 +602,9 @@ def qwen_omics_collate_fn_inference(batch):
     return {
         "input_ids": input_ids,
         "attention_mask": attention_mask,
-        "omic_info_list": omic_info_lists,
+        "omic_info_list": omic_info_list,
         "input": raw_input,
         "raw_output": raw_output,
         "raw_label": raw_label,
         "raw_task": raw_task,
-        "raw_kind": raw_kind,
     }

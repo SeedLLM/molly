@@ -204,7 +204,6 @@ class MultiModalInfer:
                         i
                     ],  # Get the label for the i-th sample
                     "task": batch["raw_task"][i],  # Get the task for the i-th sample
-                    "kind": batch["raw_kind"][i],  # Get the kind for the i-th sample
                 }
 
                 # Write the sample data to the JSON file

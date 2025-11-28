@@ -13,6 +13,22 @@ import torch.distributed as dist
 import argparse, texttable, shutil, re
 import re
 
+import argparse
+
+def str2bool(v):
+    """
+    把字符串转成布尔值，用于 argparse 的 type= 参数。
+    支持 true/false, yes/no, 1/0, y/n, t/f 及其大小写组合。
+    """
+    if isinstance(v, bool):          # 如果已经是 bool，直接返回
+        return v
+    if v.lower() in {"true", "t", "1", "yes", "y"}:
+        return True
+    elif v.lower() in {"false", "f", "0", "no", "n"}:
+        return False
+    else:
+        raise argparse.ArgumentTypeError("Boolean value expected.")
+        
 def is_main_process():
     return not dist.is_initialized() or dist.get_rank() == 0
 
