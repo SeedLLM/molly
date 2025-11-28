@@ -62,11 +62,22 @@ Omics-Specific Models（OSMs）指代各自组学赛道中性能领先的专用�
     ```
 
 ## Eval
+* 需要使用训练好的模型对评测集进行推理
+    * 脚本中的experiment_name, MODEL_DIR, CHECKPOINT需要修改为训练好模型的路径
+    * --text-model-path, --dna-rna-model-path, --protein-model-path为官方预训练权重文件路径
+    * --dataset-path为评测集路径
+    * --json-file为结果输出路径
+
+```
+./scripts/infer/inference_nt_lora.sh
+```
 * 将推理数据转换为待测评的格式
+    * 需要修改src_paths与dst_path，src_paths为推理结果的路径（注意需要是文件夹），dst_path是转换后的输出路径（注意是json文件）
 ```
 python molly/data_tools/convert.py
 ````
 * 使用测评脚本获得模型在各个任务上的性能
+    * 此处--input_file_path为转换后的输出的json文件的路径
 ```
 cd molly/eval
 .eval.sh
