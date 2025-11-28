@@ -12,7 +12,7 @@ options="--text-model-path /mnt/shared-storage-user/ai4agr-share/lijinzhe/PreMod
     --protein-model-path /mnt/shared-storage-user/ai4agr-share/lijinzhe/PreModel/esm2_t33_650M_UR50D/ \
     --protein-k-tokens 1024 \
     --trained-model-path ${MODEL_DIR} \
-    --dataset-path /mnt/shared-storage-user/ai4agr-share/lijinzhe/data/BioMLLM/train-val-test/test_all_task.parquet \
+    --dataset-path /mnt/shared-storage-user/ai4agr-share/lijinzhe/data/BioMLLM/train-val-test/test_all_task_standard.parquet \
     --max-length 3072 \
     --batch-size 16 \
     --temperature 0.8 \
