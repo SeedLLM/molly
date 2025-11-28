@@ -3,7 +3,7 @@ experiment_name="Qwen3_1.7B_mini_pack1_dem1"
 output_path="${experiment_name}"
 
 # export TORCH_NCCL_ASYNC_ERROR_HANDLING=1
-# export NCCL_TIMEOUT=3600
+export NCCL_TIMEOUT=7200
 
 # rlaunch 需要 96cpu
 export OMP_NUM_THREADS=4
@@ -62,7 +62,7 @@ options="--experiment-name $experiment_name \
 
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 deepspeed \
---include localhost:0,1,2,3 \
+--include localhost:0,1,2,3,4,5,6,7 \
 src/train.py \
 --deepspeed_config src/configs/ds_z0_config.json \
 $options

@@ -223,7 +223,8 @@ class OmicsDataset(Dataset):
 
         # 如果有缓存，直接加载
         cache_file = '.cache/indices.pt'
-        if not is_main_process() and os.path.exists(cache_file):
+        # if not is_main_process() and os.path.exists(cache_file):
+        if os.path.exists(cache_file):
             print(f'Load cache data from {cache_file}')
             return torch.load(cache_file)
 
@@ -538,7 +539,7 @@ def qwen_omics_collate_fn(batch: List[Dict[str, Any]], max_token_length: int, pa
     input_ids = pivot["input_ids"]
     labels = pivot["labels"]
     attention_mask = pivot["attention_mask"]
-    omic_info_lists = pivot["omic_info_list"]
+    omic_info_list = pivot["omic_info_list"]
     position_ids = pivot["position_ids"]
 
     input_ids = torch.nn.utils.rnn.pad_sequence(input_ids,
@@ -548,10 +549,11 @@ def qwen_omics_collate_fn(batch: List[Dict[str, Any]], max_token_length: int, pa
     position_ids = torch.nn.utils.rnn.pad_sequence(position_ids,
                                                 batch_first=True,
                                                 padding_value=0)
-                                                
+
     labels = torch.nn.utils.rnn.pad_sequence(labels,
                                              batch_first=True,
                                              padding_value=-100)
+
     attention_mask = torch.nn.utils.rnn.pad_sequence(attention_mask,
                                                      batch_first=True,
                                                      padding_value=0)
@@ -561,7 +563,7 @@ def qwen_omics_collate_fn(batch: List[Dict[str, Any]], max_token_length: int, pa
         "position_ids": position_ids,
         "labels": labels,
         "attention_mask": attention_mask,
-        "omic_info_list": omic_info_lists,
+        "omic_info_list": omic_info_list,
     }
 
 

@@ -104,7 +104,7 @@ class OmicsOne(nn.Module):
             for info in omic_info_list[b]:
                 omic_type = info["type"]
                 start_pos = info["start"]
-                oid = info["id"]
+                oid = info["id"].to(device)
                 if omic_type in ("dna", "rna"):
                     dna_rna_ids.append(oid)
                     dna_rna_map.append((b, start_pos, len(oid)))

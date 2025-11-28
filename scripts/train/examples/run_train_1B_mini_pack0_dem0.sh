@@ -8,12 +8,13 @@ echo "输出路径" "$output_path"
 
 sleep 3
 # export TORCH_NCCL_ASYNC_ERROR_HANDLING=1
-# export NCCL_TIMEOUT=3600
+export NCCL_TIMEOUT=3600
+export NCCL_ASYNC_ERROR_HANDLING=1   # 超时不会直接 crash，可日志报警
+export NCCL_DEBUG=INFO               # 方便定位
 
 # rlaunch 需要 96cpu
 export OMP_NUM_THREADS=4
 export MKL_NUM_THREADS=4
-export NCCL_DEBUG=INFO
 
 options="--experiment-name $experiment \
 --output_dir $output_path \
@@ -27,10 +28,10 @@ options="--experiment-name $experiment \
 --train-llm \
 --train-dataset-path /mnt/shared-storage-user/ai4agr-share/lijinzhe/data/BioMLLM/train-val-test/train_all_task_standard.parquet \
 --eval-dataset-path /mnt/shared-storage-user/ai4agr-share/lijinzhe/data/BioMLLM/train-val-test/dev_all_task_standard.parquet \
---max-len 8192 \
---eval-max-len 8192 \
+--max-len 3072 \
+--eval-max-len 3072 \
 --mode sft \
---per_device_train_batch_size 4 \
+--per_device_train_batch_size 16 \
 --per_device_eval_batch_size 1 \
 --read-nums 12800000 \
 --eval-read-nums 12800000 \
@@ -39,7 +40,7 @@ options="--experiment-name $experiment \
 --bf16 \
 --enable-list $enable_list \
 --save_strategy steps \
---save_steps 50000 \
+--save_steps 3000 \
 --eval_steps 25000 \
 --eval_strategy steps \
 --logging_strategy steps \
@@ -57,7 +58,7 @@ options="--experiment-name $experiment \
 --swanlab-project BioMLLM \
 --seed 42 \
 --use_dem_sft False \
---use_liger False \
+--use_liger True \
 --packing False
 "
 # --load_best_model_at_end \

@@ -253,6 +253,8 @@ def str2bool(v):
         raise argparse.ArgumentTypeError("Boolean value expected.")
 
 def main():
+    import os
+    os.environ["TORCH_DISTRIBUTED_DEBUG"] = "DETAIL"
     parser = ArgumentParser()
     # Log
     parser.add_argument(
@@ -635,7 +637,7 @@ def main():
 
     # 再让 DeepSpeed 只初始化它自己的 comm
     deepspeed.init_distributed(dist_backend="nccl", init_method="env://",
-                            auto_mpi_discovery=False, verbose=False)
+                            auto_mpi_discovery=False, verbose=True)
 
     # Calculate GPU count for DeepSpeed
     if dist.is_initialized():

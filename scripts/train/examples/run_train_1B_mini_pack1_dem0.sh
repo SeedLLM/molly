@@ -8,12 +8,13 @@ echo "输出路径" "$output_path"
 
 sleep 3
 # export TORCH_NCCL_ASYNC_ERROR_HANDLING=1
-# export NCCL_TIMEOUT=3600
+export NCCL_TIMEOUT=3600
+export NCCL_ASYNC_ERROR_HANDLING=1   # 超时不会直接 crash，可日志报警
+export NCCL_DEBUG=INFO               # 方便定位
 
 # rlaunch 需要 96cpu
 export OMP_NUM_THREADS=4
 export MKL_NUM_THREADS=4
-export NCCL_DEBUG=INFO
 
 options="--experiment-name $experiment \
 --output_dir $output_path \
@@ -39,7 +40,7 @@ options="--experiment-name $experiment \
 --bf16 \
 --enable-list $enable_list \
 --save_strategy steps \
---save_steps 50000 \
+--save_steps 3000 \
 --eval_steps 25000 \
 --eval_strategy steps \
 --logging_strategy steps \
@@ -57,7 +58,7 @@ options="--experiment-name $experiment \
 --swanlab-project BioMLLM \
 --seed 42 \
 --use_dem_sft False \
---use_liger False \
+--use_liger True \
 --packing True
 "
 # --load_best_model_at_end \
@@ -68,7 +69,7 @@ options="--experiment-name $experiment \
 
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 deepspeed \
---include localhost:0,1,2,3 \
+--include localhost:0,1,2,3,4,5,6,7 \
 src/train.py \
 --deepspeed_config src/configs/ds_z0_config.json \
 $options
