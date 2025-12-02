@@ -69,7 +69,7 @@ options="--experiment-name $experiment \
 
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 deepspeed \
---include localhost:0,1,2,3,4,5,6,7 \
+--include localhost:0,1,2,3 \
 src/train.py \
 --deepspeed_config src/configs/ds_z0_config.json \
 $options

@@ -17,3 +17,4 @@ data_tools/sample/
 trainer_output/
 src/UNKNOWN.egg-info/
 ckpt_hf/
+eval/new_save/
