@@ -165,6 +165,8 @@ class OmicsOne(nn.Module):
             hidden_states = self.process_omic_sequences(
                 hidden_states, omic_info_list, input_ids.device)
 
+        # import pdb
+        # pdb.set_trace()
         outputs = self.model(
             inputs_embeds=hidden_states,
             attention_mask=attention_mask,

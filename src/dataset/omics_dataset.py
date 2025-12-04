@@ -155,6 +155,7 @@ class OmicsDataset(Dataset):
         read_nums=None,
         type=None,
         packing=True,
+        neat_packing=True,
         **kwargs,
     ):
         """
@@ -186,6 +187,7 @@ class OmicsDataset(Dataset):
         self.padding = dataset_config.padding
         self.dataset_type = type
         self.packing = packing
+        self.neat_packing = neat_packing
 
         if "test" in self.dataset_type.lower() and self.packing:
             raise Exception('Packing not support test dataset, please disable.')
@@ -238,7 +240,7 @@ class OmicsDataset(Dataset):
             length2ids: Dict[str, List[int]] = defaultdict(list)
             lengths = []
             for i in range(start, end):
-                sample = self.format_raw(sample=df.loc[i], text_tokenizer=self.tokenizer, encode_sequence_fn=lambda _s, _i: [])
+                sample = self.format_raw(sample=df.loc[i], attn_mask_value=i-start+1, text_tokenizer=self.tokenizer, encode_sequence_fn=lambda _s, _i: [])
                 input_length = len(sample['input_ids'])
                 lengths.append(input_length)
                 length2ids[input_length].append(i)
@@ -270,18 +272,18 @@ class OmicsDataset(Dataset):
                 f"Index {idx} out of bounds for dataset with {self.dataset_length} items"
             )
 
-        if self.packing:
+        if self.packing and self.neat_packing:
             samples = []
-            for index in self.batch_input_indices[idx]:
-                sample = self.format_raw(sample=self.df.loc[index], text_tokenizer=self.tokenizer, encode_sequence_fn=self._encode_sequence)
+            for ii, index in enumerate(self.batch_input_indices[idx]):
+                sample = self.format_raw(sample=self.df.loc[index], attn_mask_value=ii+1, text_tokenizer=self.tokenizer, encode_sequence_fn=self._encode_sequence)
                 samples.append(sample)
             return samples
 
-        sample = self.format_raw(sample=self.df.loc[idx], text_tokenizer=self.tokenizer, encode_sequence_fn=self._encode_sequence)
+        sample = self.format_raw(sample=self.df.loc[idx], attn_mask_value=1, text_tokenizer=self.tokenizer, encode_sequence_fn=self._encode_sequence)
         return [sample]
 
 
-    def format_raw(self, sample: pd.core.series.Series, text_tokenizer, encode_sequence_fn: Callable[[str, List[int]], List[int]]) -> Dict[str, Any]:
+    def format_raw(self, sample: pd.core.series.Series, attn_mask_value:int, text_tokenizer, encode_sequence_fn: Callable[[str, List[int]], List[int]]) -> Dict[str, Any]:
         """
         Format a Parquet example into DNA-LLM format suitable for processing.
 
@@ -395,7 +397,7 @@ class OmicsDataset(Dataset):
         else:
             input_len = len(input_ids)
 
-        attention_mask = [1] * len(input_ids)
+        attention_mask = [attn_mask_value] * len(input_ids)
         task_name = sample.get("task", "")
         task_num = sample.get("task_num", -1)
 
@@ -461,10 +463,10 @@ class OmicsDataset(Dataset):
         return encoding["input_ids"].squeeze(0)
 
 
-def qwen_omics_collate_fn(batch: List[Dict[str, Any]], max_token_length: int, pad_id: int, eos_id: int):
+def qwen_omics_collate_fn(batch: List[Dict[str, Any]], max_token_length: int, pad_id: int, eos_id: int, neat_packing:bool=True):
     """
     Collate function for DataLoader with multimodal DNA batches.
-    Handles variable length DNA sequences and attention masks.
+    Handles variable length DNA sequences and atteqntion masks.
 
     Args:
         batch: List of (packed) samples from the dataset
@@ -473,7 +475,7 @@ def qwen_omics_collate_fn(batch: List[Dict[str, Any]], max_token_length: int, pa
         Batched tensors suitable for model input
     """
 
-    def concat(samples: List[Dict[str, torch.Tensor]]) -> Dict[str, torch.Tensor]:
+    def concat(samples: List[Dict[str, torch.Tensor]], attn_mask_pad_val: int) -> Dict[str, torch.Tensor]:
         pack_input_ids = []
         pack_labels = []
         pack_attention_mask = []
@@ -514,7 +516,7 @@ def qwen_omics_collate_fn(batch: List[Dict[str, Any]], max_token_length: int, pa
         if pad_len > 0:
             pack_input_ids.extend([pad_id] * pad_len)
             pack_labels.extend([-100] * pad_len)
-            pack_attention_mask.extend([0] * pad_len)
+            pack_attention_mask.extend([attn_mask_pad_val] * pad_len)
             pack_position_ids.extend([0] * pad_len)
 
         return {
@@ -528,7 +530,9 @@ def qwen_omics_collate_fn(batch: List[Dict[str, Any]], max_token_length: int, pa
         }
 
     # 内部折叠，输入 List[List[Dict]]， 折叠内层 List，得到 List[Dict]
-    concated = [concat(samples) for samples in batch]
+    if neat_packing:
+        concated = [concat(samples=samples, attn_mask_pad_val=0) for samples in batch]
+
     # 内外翻转，输入 List[Dict]， 翻转成 Dict[str,List]
     pivot: Dict[str, List[str]] = {}
     for d in concated:

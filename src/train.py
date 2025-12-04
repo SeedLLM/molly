@@ -551,7 +551,7 @@ def main():
     parser.add_argument(
         "--metric-for-best-model",
         type=str,
-        default="eval_loss",
+        default="eval_runtime",
         help="Metric to track for model selection",
     )
 

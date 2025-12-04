@@ -1,14 +1,22 @@
 enable_list="multimodal model.model.embed_tokens model.model.layers model.lm_head"
-experiment_name="Qwen3_1.7B_mini_pack0_dem1"
-output_path="${experiment_name}"
 
+# 去掉路径，去掉最后一个 .xxx 后缀
+experiment=$(basename "$0")
+output_path=${experiment%.*}
+
+echo "输出路径" "$output_path"
+
+sleep 3
 # export TORCH_NCCL_ASYNC_ERROR_HANDLING=1
-export NCCL_TIMEOUT=7200
+export NCCL_TIMEOUT=3600
+export NCCL_ASYNC_ERROR_HANDLING=1   # 超时不会直接 crash，可日志报警
+export NCCL_DEBUG=INFO               # 方便定位
 
 # rlaunch 需要 96cpu
 export OMP_NUM_THREADS=4
+export MKL_NUM_THREADS=4
 
-options="--experiment-name $experiment_name \
+options="--experiment-name $experiment \
 --output_dir $output_path \
 --text-model-path /mnt/shared-storage-user/ai4agr-share/lijinzhe/PreModel/Qwen3-1.7B \
 --dna-rna-model-path /mnt/shared-storage-user/ai4agr-share/lijinzhe/PreModel/nucleotide-transformer/  \
@@ -20,10 +28,10 @@ options="--experiment-name $experiment_name \
 --train-llm \
 --train-dataset-path /mnt/shared-storage-user/ai4agr-share/lijinzhe/data/BioMLLM/train-val-test/train_all_task_standard.parquet \
 --eval-dataset-path /mnt/shared-storage-user/ai4agr-share/lijinzhe/data/BioMLLM/train-val-test/dev_all_task_standard.parquet \
---max-len 3072 \
---eval-max-len 3072 \
+--max-len 8192 \
+--eval-max-len 8192 \
 --mode sft \
---per_device_train_batch_size 8 \
+--per_device_train_batch_size 4 \
 --per_device_eval_batch_size 1 \
 --read-nums 12800000 \
 --eval-read-nums 12800000 \
@@ -32,8 +40,8 @@ options="--experiment-name $experiment_name \
 --bf16 \
 --enable-list $enable_list \
 --save_strategy steps \
---save_steps 50000 \
---eval_steps 125000 \
+--save_steps 3000 \
+--eval_steps 25000 \
 --eval_strategy steps \
 --logging_strategy steps \
 --logging_steps 2 \
@@ -49,9 +57,9 @@ options="--experiment-name $experiment_name \
 --swanlab-team BioMLLM_report \
 --swanlab-project BioMLLM \
 --seed 42 \
---use_dem_sft True \
+--use_dem_sft False \
 --use_liger True \
---packing False
+--packing True
 "
 # --load_best_model_at_end \
 # --save_safetensors \
@@ -61,7 +69,7 @@ options="--experiment-name $experiment_name \
 
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 deepspeed \
---include localhost:0,1,2,3 \
+--include localhost:0,1 \
 src/train.py \
 --deepspeed_config src/configs/ds_z0_config.json \
 $options
