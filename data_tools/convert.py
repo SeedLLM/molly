@@ -5,6 +5,7 @@
 import glob
 import json
 import os
+import sys
 from typing import List, Union
 
 import pandas as pd
@@ -213,8 +214,4 @@ if __name__ == "__main__":
     # 2. 调用函数
     # convert_kegg_parquet_format(src_list, dst_file)
     # convert_bioreason_vec_format(src_list, dst_file)
-    src_paths = (
-        "/share/org/YZWL/yzwl_lijz/src/BioMLLM_V2/res/infer/Qwen3_4B_Omics_sft_0828_Solubility_cot_task_exp2_time3"
-    )
-    dst_path = "/share/org/YZWL/yzwl_lijz/src/BioMLLM_V2/res/bioinstruct/Qwen3_4B_Omics_sft_0828_Solubility_cot_task_exp2_time3.json"
-    convert_multi_json(src_paths, dst_path)
+    convert_multi_json(sys.argv[1], sys.argv[2])

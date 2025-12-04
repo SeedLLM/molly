@@ -17,3 +17,8 @@ data_tools/sample/
 trainer_output/
 src/UNKNOWN.egg-info/
 ckpt_hf/
+eval/new_save/
+swanlog/
+Qwen3_1.7B_mini_pack0_dem1/
+run_train_1B_mini_pack0_dem0/
+run_train_1B_mini_pack1_dem1/

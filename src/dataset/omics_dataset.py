@@ -1,10 +1,13 @@
 import os
 import re
+import pdb
 from dataclasses import dataclass
 from functools import partial
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Callable
+from collections import defaultdict
 
 import numpy as np
+import bisect
 import pandas as pd
 import torch
 from torch.utils.data import Dataset
@@ -17,10 +20,9 @@ from utils import time_count
 
 @dataclass
 class DatasetConfig:
-    max_len: int = 1024
-    max_src_len: int = 1024
+    # length of text_omics_ids + label_ids + ml_format 
+    max_len: int = 8192
     mode: str = "sft"
-    cal_metric_pos: int = -1
     padding: bool = True
     input_field: str = "input"
     output_field: str = "output"
@@ -28,104 +30,8 @@ class DatasetConfig:
     protein_k_tokens: int = 128
     type: str = ''
 
-
 class OmicsDataset(Dataset):
     """Dataset for DNA/RNA data from Parquet, formatted for Bio-LLM."""
-
-    def __init__(
-        self,
-        parquet_file: str,
-        tokenizer,
-        dataset_config:"DatasetConfig",
-        dna_rna_tokenizer=None,
-        protein_tokenizer=None,
-        read_nums=None,
-        shuffle=False,
-        seed=42,
-        type=None,
-        **kwargs,
-    ):
-        """
-        Initialize the dataset by loading a Parquet file and formatting each example.
-
-        Args:
-            parquet_file: Path to the Parquet file.
-            tokenizer: Text tokenizer for processing text parts.
-            dataset_config: Configuration for the dataset.
-            dna_rna_tokenizer: Tokenizer for DNA/RNA sequences.
-            read_nums: Maximum number of samples to read.
-            shuffle: Whether to shuffle the dataset.
-            seed: Random seed for shuffling.
-            type: Dataset type. "Train / Eval" or "Test"
-            **kwargs: Additional arguments.
-        """
-
-        os.environ["TOKENIZERS_PARALLELISM"] = "false"
-
-        self.parquet_file = parquet_file
-        self.tokenizer = tokenizer
-        self.dna_rna_tokenizer = dna_rna_tokenizer
-        self.protein_tokenizer = protein_tokenizer
-        self.dataset_config = dataset_config
-        self.shuffle = shuffle
-        self.seed = seed
-
-        # Configuration parameters
-        self.max_len = dataset_config.max_len
-        self.max_src_len = dataset_config.max_src_len
-        self.dna_rna_project_token_num = dataset_config.dna_rna_k_tokens
-        self.protein_project_token_num = dataset_config.protein_k_tokens
-        self.mode = dataset_config.mode
-        self.cal_metric_pos = dataset_config.cal_metric_pos
-        self.padding = dataset_config.padding
-        self.dataset_type = type
-
-        # Special tokens
-        self._pretokenize_special_tokens()
-
-        # 预定义固定内容的分词结果
-        self.system_prompt_ids = self.tokenizer.encode(
-            "<|im_start|>system\nYou are a helpful knowledgeable and precise biomedical assistant.<|im_end|>\n<|im_start|>user\n",
-            add_special_tokens=False,
-        )
-        self.assistant_start_ids = self.tokenizer.encode(
-            "<|im_end|>\n<|im_start|>assistant\n", add_special_tokens=False)
-
-        # Load data
-        print(f"Loading parquet data from {parquet_file}")
-        df = pd.read_parquet(parquet_file)
-
-        # Limit samples if specified
-        if read_nums:
-            df = df.head(read_nums)
-
-        # Shuffle if needed
-        if self.shuffle:
-            rng = np.random.default_rng(self.seed)
-            df = df.sample(frac=1, random_state=rng).reset_index(drop=True)
-
-        self.df = df
-
-    def __len__(self) -> int:
-        """Return the number of items in the dataset."""
-        return len(self.df)
-
-    def __getitem__(self, idx: int) -> Dict[str, torch.Tensor]:
-        """Return a specific item from the dataset."""
-        # Ensure index is valid
-        if idx < 0 or idx >= len(self.df):
-            raise IndexError(
-                f"Index {idx} out of bounds for dataset with {len(self.df)} items"
-            )
-
-        sample = self.format_raw(self.df.loc[idx], self.tokenizer)
-        processed = self.process_sample(sample)
-        assert len(processed["omic_ids"]) == len(
-            processed["omic_info_list"]
-        ), f"Mismatch in Omic IDs and Omic info for sample {idx}: {len(processed['omic_ids'])}\
-        vs {len(processed['omic_info_list'])}"
-
-        return processed
 
     def _pretokenize_special_tokens(self):
         self.dna_start_token = "<|dna_start|>"
@@ -213,7 +119,171 @@ class OmicsDataset(Dataset):
         else:
             return 100
 
-    def format_raw(self, sample: pd.core.series.Series, tokenizer) -> dict:
+    def greedy_knapsack(self, numbers: List[int], capacity: int) -> List[List[int]]:
+        r"""Implement efficient greedy algorithm with binary search for the knapsack problem."""
+        numbers.sort()  # sort numbers in ascending order for binary search
+        knapsacks = []
+
+        def search_for_fit(numbers: list[int], capacity: int) -> int:
+            r"""Find the index of largest number that fits into the knapsack with the given capacity."""
+            index = bisect.bisect(numbers, capacity)
+            return -1 if index == 0 else (index - 1)
+
+        while numbers:
+            current_knapsack = []
+            remaining_capacity = capacity
+
+            while True:
+                index = search_for_fit(numbers, remaining_capacity)
+                if index == -1:
+                    break  # no more numbers fit in this knapsack
+
+                remaining_capacity -= numbers[index]  # update the remaining capacity
+                current_knapsack.append(numbers.pop(index))  # add the number to knapsack
+
+            knapsacks.append(current_knapsack)
+
+        return knapsacks
+
+    def __init__(
+        self,
+        parquet_file: str,
+        tokenizer,
+        dataset_config:"DatasetConfig",
+        dna_rna_tokenizer=None,
+        protein_tokenizer=None,
+        read_nums=None,
+        type=None,
+        packing=True,
+        neat_packing=True,
+        **kwargs,
+    ):
+        """
+        Initialize the dataset by loading a Parquet file and formatting each example.
+
+        Args:
+            parquet_file: Path to the Parquet file.
+            tokenizer: Text tokenizer for processing text parts.
+            dataset_config: Configuration for the dataset.
+            dna_rna_tokenizer: Tokenizer for DNA/RNA sequences.
+            read_nums: Maximum number of samples to read.
+            type: Dataset type. "Train / Eval" or "Test"
+            **kwargs: Additional arguments.
+        """
+
+        os.environ["TOKENIZERS_PARALLELISM"] = "false"
+
+        self.parquet_file = parquet_file
+        self.tokenizer = tokenizer
+        self.dna_rna_tokenizer = dna_rna_tokenizer
+        self.protein_tokenizer = protein_tokenizer
+        self.dataset_config = dataset_config
+
+        # Configuration parameters
+        self.max_len = dataset_config.max_len
+        self.dna_rna_project_token_num = dataset_config.dna_rna_k_tokens
+        self.protein_project_token_num = dataset_config.protein_k_tokens
+        self.mode = dataset_config.mode
+        self.padding = dataset_config.padding
+        self.dataset_type = type
+        self.packing = packing
+        self.neat_packing = neat_packing
+
+        if "test" in self.dataset_type.lower() and self.packing:
+            raise Exception('Packing not support test dataset, please disable.')
+
+        # Special tokens
+        self._pretokenize_special_tokens()
+
+        # 预定义固定内容的分词结果
+        self.system_user_ids = self.tokenizer.encode(
+            "<|im_start|>system\nYou are a helpful knowledgeable and precise biomedical assistant.<|im_end|>\n<|im_start|>user\n",
+            add_special_tokens=False,
+        )
+        self.assistant_start_ids = self.tokenizer.encode(
+            "<|im_end|>\n<|im_start|>assistant\n", add_special_tokens=False)
+
+        # Load data
+        print(f"Loading parquet data from {parquet_file}")
+        df = pd.read_parquet(parquet_file, engine='pyarrow', use_threads=True, memory_map=True)
+
+        # Limit samples if specified
+        if read_nums:
+            df = df.head(read_nums)
+
+        if self.packing:
+            self.batch_input_indices = self.pack_input_ids(df=df, max_token_length=self.max_len)
+            self.dataset_length = len(self.batch_input_indices)
+        else:
+            self.batch_input_indices = None
+            self.dataset_length = len(df)
+        
+        self.df = df
+
+    def pack_input_ids(self, df: pd.core.frame.DataFrame, max_token_length: int) -> List[List[int]]:
+        """Return a list of packed index"""
+
+        # 如果有缓存，直接加载
+        cache_file = '.cache/indices.pt'
+        # if not is_main_process() and os.path.exists(cache_file):
+        if os.path.exists(cache_file):
+            print(f'Load cache data from {cache_file}')
+            return torch.load(cache_file)
+
+        batch_input_indices = []
+        chunk = 1000
+
+        for start in tqdm(range(0, len(df), chunk), disable=not is_main_process()):
+            end = start + min(chunk, len(df) - start)
+
+            # 用于根据 length 查询合适的 id
+            length2ids: Dict[str, List[int]] = defaultdict(list)
+            lengths = []
+            for i in range(start, end):
+                sample = self.format_raw(sample=df.loc[i], attn_mask_value=i-start+1, text_tokenizer=self.tokenizer, encode_sequence_fn=lambda _s, _i: [])
+                input_length = len(sample['input_ids'])
+                lengths.append(input_length)
+                length2ids[input_length].append(i)
+
+            # sort by descend
+            knapsacks = self.greedy_knapsack(lengths, max_token_length-1)
+
+            chunk_indexs = []
+            for knapsack in knapsacks:
+                indexes = [length2ids[length].pop() for length in knapsack]
+                batch_input_indices.append(indexes)
+
+        # caching
+        if is_main_process():
+            print(f'Dump cache data to {cache_file}')
+            os.makedirs(os.path.dirname(cache_file), exist_ok=True)
+            torch.save(batch_input_indices, cache_file)
+        return batch_input_indices
+
+    def __len__(self) -> int:
+        """Return the number of items in the (packed) dataset."""
+        return self.dataset_length
+
+    def __getitem__(self, idx: int) -> List[Dict[str, List[int]]]:
+        """Return a specific item from the (packed) dataset."""
+        # Ensure index is valid
+        if idx < 0 or idx >= self.dataset_length:
+            raise IndexError(
+                f"Index {idx} out of bounds for dataset with {self.dataset_length} items"
+            )
+
+        if self.packing and self.neat_packing:
+            samples = []
+            for ii, index in enumerate(self.batch_input_indices[idx]):
+                sample = self.format_raw(sample=self.df.loc[index], attn_mask_value=ii+1, text_tokenizer=self.tokenizer, encode_sequence_fn=self._encode_sequence)
+                samples.append(sample)
+            return samples
+
+        sample = self.format_raw(sample=self.df.loc[idx], attn_mask_value=1, text_tokenizer=self.tokenizer, encode_sequence_fn=self._encode_sequence)
+        return [sample]
+
+
+    def format_raw(self, sample: pd.core.series.Series, attn_mask_value:int, text_tokenizer, encode_sequence_fn: Callable[[str, List[int]], List[int]]) -> Dict[str, Any]:
         """
         Format a Parquet example into DNA-LLM format suitable for processing.
 
@@ -221,7 +291,6 @@ class OmicsDataset(Dataset):
         - "input": Clean text (tags removed)
         - "kind": Hyphen-separated types like "dna" or "dna-rna"
         """
-
         # 预处理文本内容
         input_text = sample.get("input", "").strip()
         output_text = sample.get("output", "").strip()
@@ -247,7 +316,6 @@ class OmicsDataset(Dataset):
         }
 
         seq_info: List[Dict[str, Any]] = []
-        raw_seqs: List[str] = []
 
         for kind in ["dna", "rna", "protein"]:
             pat = self._regex_map.get(kind)
@@ -258,24 +326,29 @@ class OmicsDataset(Dataset):
                 seq_info.append({
                     "type": kind,
                     "start": m.start(),
-                    "end": m.end()
+                    "end": m.end(),
+                    "seq": raw_seq, 
                 })
-                raw_seqs.append(raw_seq)
 
-        input_ids = list(self.system_prompt_ids)
+        input_ids = list(self.system_user_ids)
         omic_info_list = []
-
+        
         start = 0
         # encode 非序列部分，并记录序列起始位置
         for info in sorted(seq_info, key=lambda x: x["start"], reverse=False):
             seq_type = info["type"]
             s, e = info["start"], info["end"]
-
+            # 处理序列前的文本
             input_ids.extend(
-                tokenizer.encode(input_text[start:s],
+                text_tokenizer.encode(input_text[start:s],
                                  add_special_tokens=False))
-            omic_info_list.append({"type": seq_type, "start": len(input_ids)})
 
+            # encode 序列本身，但不填入 text input_ids
+            seq = info["seq"]
+            encoded_seq = encode_sequence_fn(seq, seq_type)
+            omic_info_list.append({"type": seq_type, "start": len(input_ids), "id": encoded_seq})
+
+            # 序列所在位置留个 placeholder
             input_ids.append(tag_map[seq_type]["start"])
             if seq_type in ["dna", "rna"]:
                 input_ids.extend([tag_map[seq_type]["pad"]] *
@@ -287,76 +360,26 @@ class OmicsDataset(Dataset):
 
             start = e
 
-        # 添加剩余文本
+        # 添加末尾剩余文本
         if start < len(input_text):
             input_ids.extend(
-                tokenizer.encode(input_text[start:], add_special_tokens=False))
-
-        # Encode the sequence
-        output_ids = (tokenizer.encode(output_text, add_special_tokens=False)
-                      if output_text else [])
-        reasoning_ids = (tokenizer.encode(reasoning, add_special_tokens=False)
-                         if reasoning else [])
-
-        # 处理序列数据
-        omic_ids_list = []
-
-        for i, seq in enumerate(raw_seqs):
-            seq_type = seq_info[i]["type"]
-            encoded_seq = self._encode_sequence(seq, seq_type)
-            omic_ids_list.append(encoded_seq)
-
-        if self.dataset_type == "Test":
-            return {
-                "input_ids": input_ids,
-                "output_ids": output_ids,
-                "reasoning_token_ids": reasoning_ids,
-                "omic_ids_list": omic_ids_list,
-                "omic_info_list": omic_info_list,
-                "task": sample.get("task", ""),
-                "label": sample.get("label", ""),
-                "raw_input": input_text,
-                "raw_output": output_text,
-            }
-
-        return {
-        "input_ids": input_ids,
-        "output_ids": output_ids,
-        "reasoning_token_ids": reasoning_ids,
-        "omic_ids_list": omic_ids_list,
-        "omic_info_list": omic_info_list,
-        "task": sample.get("task", ""),
-        "label": sample.get("label", ""),
-        "task_label": self.convert_source_to_id(sample.get("task")),
-        "task_num": sample.get("task_num"),
-    }
-
-    # pylint: disable=too-many-branches
-    def process_sample(self, sample: Dict[str,
-                                          Any]) -> Dict[str, torch.Tensor]:
-        """
-        Process a sample into model-ready format with tokenized sequences.
-        """
-        input_ids = sample["input_ids"]
-
-        # 初始化 cal_metric_pos 为 None
-        cal_metric_pos = None
-        labels = None
-
+                text_tokenizer.encode(input_text[start:], add_special_tokens=False))
+        
+        # 添加 assistant 部分标签
         input_ids.extend(self.assistant_start_ids)
 
-        # Process output based on mode
-        if self.mode == "sft":
-            output_ids = sample["output_ids"]
-        else:
-            output_ids = []
+        # Encode the sequence
+        output_ids = (text_tokenizer.encode(output_text, add_special_tokens=False)
+                      if output_text else [])
+        reasoning_ids = (text_tokenizer.encode(reasoning, add_special_tokens=False)
+                         if reasoning else [])
+
+        # 处理 output 数据
+        labels = None
 
         # Add EOS token based on mode
         if self.dataset_type != "Test":
-            if self.mode == "pretrain":
-                input_ids.append(self.eos_id)
-            else:
-                output_ids.append(self.eos_id)
+            output_ids.append(self.eos_id)
 
             input_len = len(input_ids)
             input_ids.extend(output_ids)
@@ -371,51 +394,44 @@ class OmicsDataset(Dataset):
                 # print(f"Truncating input_ids from {len(input_ids)} to {self.max_len-1}")
                 input_ids = input_ids[:self.max_len - 1] + [self.eos_id]
                 labels = labels[:self.max_len - 1] + [self.eos_id]
-
-            # Calculate metric position
-            if self.cal_metric_pos is not None:
-                cal_metric_pos = input_len + 1 + self.cal_metric_pos
-            elif len(output_ids) > 0:
-                cal_metric_pos = input_len + 1
         else:
             input_len = len(input_ids)
 
-        attention_mask = [1] * len(input_ids)
+        attention_mask = [attn_mask_value] * len(input_ids)
+        task_name = sample.get("task", "")
+        task_num = sample.get("task_num", -1)
+
         if self.dataset_type == "Test":
-            omic_start_pos_list = sample["omic_info_list"]
+            omic_start_pos_list = omic_info_list
 
             if self.padding and (pad_len := self.max_len - len(input_ids)) > 0:
+                # padding left
                 input_ids[:0] = [self.pad_id] * pad_len
                 attention_mask[:0] = [0] * pad_len
                 for i, _ in enumerate(omic_start_pos_list):
                     omic_start_pos_list[i]["start"] += pad_len
             # Convert to tensors
             return {
-                "input_ids": torch.LongTensor(input_ids),
-                "omic_ids": torch.stack(sample["omic_ids_list"]),
+                "input_ids": input_ids,
                 "omic_info_list": omic_start_pos_list,
-                "attention_mask": torch.LongTensor(attention_mask),
-                "task": sample["task"],
-                "raw_label": sample["label"],
-                "raw_input": sample["raw_input"],
-                "raw_output": sample["raw_output"],
+                "attention_mask": attention_mask,
+                "task": task_name,
+                "raw_label": sample.get("label", ""),
+                "raw_input": input_text,
+                "raw_output": output_text,
+                "task_label": self.convert_source_to_id(task_name),
+                "task_num": task_num,
             }
-        # Add padding if needed
-        if self.padding and (pad_len := self.max_len - len(input_ids)) > 0:
-            input_ids.extend([self.pad_id] * pad_len)
-            labels.extend([-100] * pad_len)
-            attention_mask.extend([0] * pad_len)
 
+        # return raw list
         return {
-        "input_ids": torch.LongTensor(input_ids),
-        "omic_ids": torch.stack(sample["omic_ids_list"]),
-        "omic_info_list": sample["omic_info_list"],
-        "labels": torch.LongTensor(labels),
-        "attention_mask": torch.LongTensor(attention_mask),
-        "cal_metric_pos": cal_metric_pos,
-        "task_label": torch.tensor(sample.get("task_label")),
-        "task_num": torch.tensor(sample.get("task_num"))
-    }
+            "input_ids": input_ids,
+            "omic_info_list": omic_info_list,
+            "labels": labels,
+            "attention_mask": attention_mask,
+            "task_label": self.convert_source_to_id(task_name),
+            "task_num": task_num,
+        }
 
     def _encode_sequence(self, seq: str, seq_type: str) -> torch.LongTensor:
         """
@@ -447,59 +463,111 @@ class OmicsDataset(Dataset):
         return encoding["input_ids"].squeeze(0)
 
 
-# def qwen_omics_collate_fn(batch):
-def qwen_omics_collate_fn(batch):
+def qwen_omics_collate_fn(batch: List[Dict[str, Any]], max_token_length: int, pad_id: int, eos_id: int, neat_packing:bool=True):
     """
     Collate function for DataLoader with multimodal DNA batches.
-    Handles variable length DNA sequences and attention masks.
+    Handles variable length DNA sequences and atteqntion masks.
 
     Args:
-        batch: List of samples from the dataset
+        batch: List of (packed) samples from the dataset
 
     Returns:
         Batched tensors suitable for model input
     """
-    input_ids = [sample["input_ids"] for sample in batch]
-    labels = [sample["labels"] for sample in batch]
-    attention_mask = [sample["attention_mask"] for sample in batch]
-    cal_metric_pos = [sample.get("cal_metric_pos") for sample in batch]
-    omic_info_lists = [sample.get("omic_info_list", []) for sample in batch]
-    omic_ids = [sample.get("omic_ids", None) for sample in batch]
-    task_label = [sample.get("task_label") for sample in batch]
-    task_num = [sample.get("task_num") for sample in batch]
+
+    def concat(samples: List[Dict[str, torch.Tensor]], attn_mask_pad_val: int) -> Dict[str, torch.Tensor]:
+        pack_input_ids = []
+        pack_labels = []
+        pack_attention_mask = []
+        pack_position_ids = []
+        pack_omic_info_list = []
+        # 任务类型 ID，用于分子 loss 统计
+        pack_task_label = []
+        # 训练数据 ID
+        pack_task_num = []
+
+        offset = 0
+        for sample in samples:
+            len_i = len(sample["input_ids"])
+            pack_input_ids   += sample["input_ids"]
+            pack_labels      += sample["labels"]
+            pack_attention_mask += sample["attention_mask"]
+            pack_position_ids += list(range(len_i))
+
+            if not pack_task_label:
+                pack_task_label.append(sample["task_label"])
+                pack_task_num.append(sample["task_num"])
+
+            # 调整 omic_info 的 start
+            for info in sample.get("omic_info_list", []):
+                pack_omic_info_list.append({"type": info["type"], "start": info["start"] + offset, "id": info["id"]})
+            offset += len_i
+
+        # 整体截断
+        if len(pack_input_ids) > max_token_length:
+            pack_input_ids   = pack_input_ids[:max_token_length-1] + [eos_id]
+            pack_labels      = pack_labels[:max_token_length-1]   + [eos_id]
+            pack_attention_mask = pack_attention_mask[:max_token_length]
+            pack_position_ids   = pack_position_ids[:max_token_length]
+
+
+        # pad 到 max_len（trainer 要求固定长度）
+        pad_len = max_token_length - len(pack_input_ids)
+        if pad_len > 0:
+            pack_input_ids.extend([pad_id] * pad_len)
+            pack_labels.extend([-100] * pad_len)
+            pack_attention_mask.extend([attn_mask_pad_val] * pad_len)
+            pack_position_ids.extend([0] * pad_len)
+
+        return {
+            "input_ids": torch.LongTensor(pack_input_ids),
+            "labels": torch.LongTensor(pack_labels),
+            "position_ids": torch.LongTensor(pack_position_ids),
+            "attention_mask": torch.LongTensor(pack_attention_mask),
+            "omic_info_list": pack_omic_info_list,
+            "task_label": torch.LongTensor(pack_task_label), 
+            "task_num": torch.LongTensor(pack_task_num),
+        }
+
+    # 内部折叠，输入 List[List[Dict]]， 折叠内层 List，得到 List[Dict]
+    if neat_packing:
+        concated = [concat(samples=samples, attn_mask_pad_val=0) for samples in batch]
+
+    # 内外翻转，输入 List[Dict]， 翻转成 Dict[str,List]
+    pivot: Dict[str, List[str]] = {}
+    for d in concated:
+        for k, v in d.items():
+            pivot.setdefault(k, []).append(v)
+
+    # assign
+    input_ids = pivot["input_ids"]
+    labels = pivot["labels"]
+    attention_mask = pivot["attention_mask"]
+    omic_info_list = pivot["omic_info_list"]
+    position_ids = pivot["position_ids"]
 
     input_ids = torch.nn.utils.rnn.pad_sequence(input_ids,
                                                 batch_first=True,
                                                 padding_value=0)
+
+    position_ids = torch.nn.utils.rnn.pad_sequence(position_ids,
+                                                batch_first=True,
+                                                padding_value=0)
+
     labels = torch.nn.utils.rnn.pad_sequence(labels,
                                              batch_first=True,
                                              padding_value=-100)
+
     attention_mask = torch.nn.utils.rnn.pad_sequence(attention_mask,
                                                      batch_first=True,
                                                      padding_value=0)
-    omic_ids = (torch.nn.utils.rnn.pad_sequence(
-        omic_ids, batch_first=True, padding_value=1) if omic_ids else None)
-    task_label = torch.stack(task_label)
-    task_num = torch.stack(task_num)
-
-
-    # Pad omic_info_lists to the same length as omic_ids
-    for i, _ in enumerate(omic_info_lists):
-        if len(omic_info_lists[i]) < omic_ids.shape[1]:
-            omic_info_lists[i].extend([{
-                "type": "pad",
-                "start": -1
-            }] * (omic_ids.shape[1] - len(omic_info_lists[i])))
 
     return {
         "input_ids": input_ids,
+        "position_ids": position_ids,
         "labels": labels,
         "attention_mask": attention_mask,
-        "omic_ids": omic_ids,
-        "omic_info_list": omic_info_lists,
-        "cal_metric_pos": cal_metric_pos,
-        "task_label": task_label,
-        "task_num": task_num,
+        "omic_info_list": omic_info_list,
     }
 
 
@@ -515,17 +583,19 @@ def qwen_omics_collate_fn_inference(batch):
         Batched tensors suitable for model input
     """
 
-    input_ids = [sample["input_ids"] for sample in batch]
-    attention_mask = [sample["attention_mask"] for sample in batch]
-    cal_metric_pos = [sample.get("cal_metric_pos") for sample in batch]
-    omic_info_lists = [sample.get("omic_info_list", []) for sample in batch]
-    omic_ids = [sample.get("omic_ids", None) for sample in batch]
+    ## unsqueeze item
+    for index, datapack in enumerate(batch):
+        if type(datapack) is list and len(datapack) == 1:
+            batch[index] = datapack[0]
+    
+    input_ids = torch.LongTensor([sample["input_ids"] for sample in batch])
+    attention_mask = torch.LongTensor([sample["attention_mask"] for sample in batch])
+    omic_info_list = [sample.get("omic_info_list", []) for sample in batch]
 
     raw_input = [sample.get("raw_input") for sample in batch]
     raw_output = [sample.get("raw_output") for sample in batch]
     raw_label = [sample.get("raw_label") for sample in batch]
     raw_task = [sample.get("task") for sample in batch]
-    raw_kind = [sample.get("kind") for sample in batch]
 
     input_ids = torch.nn.utils.rnn.pad_sequence(input_ids,
                                                 batch_first=True,
@@ -533,25 +603,12 @@ def qwen_omics_collate_fn_inference(batch):
     attention_mask = torch.nn.utils.rnn.pad_sequence(attention_mask,
                                                      batch_first=True,
                                                      padding_value=0)
-    omic_ids = (torch.nn.utils.rnn.pad_sequence(
-        omic_ids, batch_first=True, padding_value=1) if omic_ids else None)
-
-    for i, _ in enumerate(omic_info_lists):
-        if len(omic_info_lists[i]) < omic_ids.shape[1]:
-            omic_info_lists[i].extend([{
-                "type": "pad",
-                "start": -1
-            }] * (omic_ids.shape[1] - len(omic_info_lists[i])))
-
     return {
         "input_ids": input_ids,
         "attention_mask": attention_mask,
-        "omic_ids": omic_ids,
-        "omic_info_list": omic_info_lists,
-        "cal_metric_pos": cal_metric_pos,
+        "omic_info_list": omic_info_list,
         "input": raw_input,
         "raw_output": raw_output,
         "raw_label": raw_label,
         "raw_task": raw_task,
-        "raw_kind": raw_kind,
     }

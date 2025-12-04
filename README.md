@@ -69,18 +69,20 @@ Omics-Specific Models（OSMs）指代各自组学赛道中性能领先的专用�
     * --json-file为结果输出路径
 
 ```
-./scripts/infer/inference_nt_lora.sh
+./scripts/infer/inference_nt_lora.sh /path/to/checkpoint-3594  /path/to/inference.jsonl
 ```
+
 * 将推理数据转换为待测评的格式
     * 需要修改src_paths与dst_path，src_paths为推理结果的路径（注意需要是文件夹），dst_path是转换后的输出路径（注意是json文件）
 ```
-python molly/data_tools/convert.py
+python3 data_tools/convert.py /path/to/inference.jsonl /path/to/convert.jsonl
 ````
+
 * 使用测评脚本获得模型在各个任务上的性能
     * 此处--input_file_path为转换后的输出的json文件的路径
 ```
 cd molly/eval
-.eval.sh
+.eval.sh modelname /path/to/convert.jsonl
 ```
 
 ## :pushpin: LICENSE
