@@ -3,7 +3,6 @@ import json
 import os
 
 import torch
-from peft import PeftModel
 from tqdm import tqdm
 from transformers import AutoModelForCausalLM, AutoModelForMaskedLM, AutoTokenizer
 
@@ -16,6 +15,7 @@ from model.config import get_omics_one_config
 
 # pylint: disable=no-name-in-module
 from model.omics_one import OmicsOne
+from utils import str2bool
 
 
 def parse_args():
@@ -92,6 +92,17 @@ def parse_args():
     )
     parser.add_argument("--repetition-penalty", type=float, default=1.0)
     parser.add_argument("--json-file", type=str)
+    # Optimization
+    parser.add_argument("--attn_impl",
+                        type=str,
+                        default='flash_attention_2',
+                        choices=['sdpa', 'flash_attention_2', 'flash_attention_3'],
+                        help="FlashAttn Implementation, support sdpa, flash_attention_2 or flash_attention_3")
+    
+    parser.add_argument("--use_liger",
+                        type=str2bool,
+                        default=False,
+                        help="Whether to use liger for optimizer state offload, see https://github.com/linkedin/Liger-Kernel")
     return parser.parse_args()
 
 
@@ -107,6 +118,8 @@ class MultiModalInfer:
             torch.cuda.manual_seed_all(self.args.seed)
 
         # ‑- Device --------------------------------------------------------------
+        if not torch.cuda.is_available():
+            raise Exception(f'cuda not available, please check env.')
         self.device = torch.device(
             "cuda:0"
             if self.args.device == "cuda" and torch.cuda.is_available()
@@ -169,7 +182,11 @@ class MultiModalInfer:
             args.text_model_path,
             torch_dtype="auto",
             trust_remote_code=True,
+            attn_implementation=args.attn_impl,
         )
+        if args.use_liger:
+            from liger_kernel.transformers import apply_liger_kernel_to_qwen3
+            apply_liger_kernel_to_qwen3()
         self.model.model = qwen_model
 
         print(f"Loading NT model from {self.args.dna_rna_model_path}")
@@ -189,6 +206,7 @@ class MultiModalInfer:
 
         # 检查是否使用LoRA
         if self.args.use_lora:
+            from peft import PeftModel
             print("LoRA mode enabled, checking for LoRA weights...")
             lora_path = self.args.trained_model_path
 

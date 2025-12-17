@@ -33,6 +33,9 @@ from utils import (
     set_up_trainable_param,
     time_count,
     get_current_device,
+    pretty_print_args,
+    is_main_process,
+    str2bool,
 )
 
 import transformers
@@ -579,6 +582,7 @@ def main():
                         help="FlashAttn Implementation, support sdpa, flash_attention_2 or flash_attention_3")
     
     parser.add_argument("--use_liger",
+                        type=str2bool,
                         default=False,
                         help="Whether to use liger for optimizer state offload, see https://github.com/linkedin/Liger-Kernel")
 
@@ -614,6 +618,10 @@ def main():
         args.gpu_count = dist.get_world_size()
     else:
         args.gpu_count = 1
+
+    if is_main_process():
+        pretty_print_args(args)
+        time.sleep(5)
 
     # Add clip_grad_max_norm if not present
     if not hasattr(args, "clip_grad_max_norm"):
