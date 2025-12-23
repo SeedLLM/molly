@@ -10,6 +10,7 @@ import time
 from contextlib import contextmanager
 from transformers.utils import is_torch_cuda_available
 import torch.distributed as dist
+import argparse, texttable, shutil, re
 
 def is_main_process():
     return not dist.is_initialized() or dist.get_rank() == 0
@@ -393,3 +394,78 @@ def pre_train_lora(model, args):
     for param in model.protein_projector.parameters():
         param.requires_grad = True
     return model
+
+def str2bool(v):
+    """
+    把字符串转成布尔值，用于 argparse 的 type= 参数。
+    支持 true/false, yes/no, 1/0, y/n, t/f 及其大小写组合。
+    """
+    if isinstance(v, bool):          # 如果已经是 bool，直接返回
+        return v
+    if v.lower() in {"true", "t", "1", "yes", "y"}:
+        return True
+    elif v.lower() in {"false", "f", "0", "no", "n"}:
+        return False
+    else:
+        raise argparse.ArgumentTypeError("Boolean value expected.")
+
+# ---------------- 工具：剥色 + 截断 ----------------
+def _strip_ansi(text: str) -> str:
+    return re.sub(r'\x1b\[[0-9;]*m', '', text)
+
+def _fit(text: str, max_len: int = 48) -> str:
+    if len(_strip_ansi(text)) <= max_len:
+        return text
+    return text[:max_len-3] + '...'
+
+# ---------------- 2. 彩色打印函数 ----------------
+def pretty_print_args(args: argparse.Namespace):
+    # ---------------- 1. 把参数按关键字分组 ----------------
+    GROUP_MAP = {
+        'experiment': {'experiment_name', 'output_dir', 'swanlab', 'report_to',
+                    'swanlab_mode', 'swanlab_team', 'swanlab_project',
+                    'test_code', 'profile_log_dir'},
+        'model     ': {'text_model_path', 'dna_rna_model_path', 'dna_rna_k_tokens',
+                'protein_model_path', 'protein_k_tokens', 'device',
+                'no_load_pretrained', 'load_best_model_at_end', 'greater_is_better',
+                'train_bio', 'train_mlp', 'train_llm', 'bf16', 'fp16'},
+        'dataset   ': {'train_dataset_path', 'eval_dataset_path', 'max_len',
+                    'max_src_len', 'eval_max_len', 'eval_max_src_len', 'skip_eval',
+                    'read_nums', 'eval_read_nums', 'prefix', 'postfix',
+                    'meta_prompt', 'batching_stretegy', 'all_reduce_loss'},
+        'training  ': {'mode', 'per_device_train_batch_size', 'per_device_eval_batch_size',
+                    'num_train_epochs', 'train_iters', 'save_strategy', 'save_steps',
+                    'eval_strategy', 'eval_steps', 'logging_strategy', 'logging_steps',
+                    'enable_list', 'save_trainable', 'save_only_model', 'if_train_llm',
+                    'compute_domain_losses'},
+        'optimizer ': {'learning_rate', 'gradient_accumulation_steps', 'warmup_ratio',
+                    'weight_decay', 'eps', 'betas'},
+        'early_stop': {'early_stopping_patience', 'metric_for_best_model'},
+        'lora      ': {'use_lora', 'lora_r', 'save_total_limit', 'save_safetensors'},
+        'system    ': {'local_rank', 'attn_impl', 'use_liger', 'dataloader_pin_memory',
+                'seed'},
+    }
+
+    term = shutil.get_terminal_size((100, 20))
+    table = texttable.Texttable(max_width=term.columns)
+    table.set_deco(texttable.Texttable.HEADER | texttable.Texttable.VLINES)
+
+    # 表头
+    table.header(['Module', 'Key', 'Value'])
+
+    # 逐组填充
+    for group, keys in GROUP_MAP.items():
+        first = True
+        for k in sorted(keys):
+            if k not in vars(args):
+                continue
+            v = getattr(args, k)
+            # 提前截断超长列表/字符串，防止 texttable 自动折行
+            v_str = str(v)
+            if len(v_str) > 50:
+                v_str = v_str[:47] + '...'
+
+            table.add_row([group if first else '', k, v_str])
+            first = False
+
+    print('\n' + table.draw() + '\n')
